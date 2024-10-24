@@ -6,12 +6,14 @@ from db import criar_tabela_transcricoes
 criar_tabela_transcricoes()
 
 # Função para redefinir o estado da aplicação
+@st.cache_data
 def reset_state():
     for key in st.session_state.keys():
         del st.session_state[key]
 
 # Configuração da interface com Streamlit
-st.title("Transcrição de Áudios com Banco de Dados de Transcrições")
+
+st.title("Conversão do Excel do Cellebrite em Word (Com transcrições)")
 
 # Upload do arquivo Excel
 uploaded_file = st.file_uploader("Faça o upload do arquivo Excel", type=["xlsx"])
