@@ -31,6 +31,9 @@ def adicionar_bordas_a_tabela(table):
 def criar_documento_docx(df, audio_dir):
     doc = Document()
 
+     # Filtrar linhas em branco
+    df = df.dropna(how='all')  # Remove linhas onde todas as células estão em branco
+
     # Adicionar tabela com 3 colunas: "From", "Body", "Timestamp-Time"
     table = doc.add_table(rows=1, cols=3)
 
@@ -42,9 +45,6 @@ def criar_documento_docx(df, audio_dir):
     hdr_cells[0].text = 'From'
     hdr_cells[1].text = 'Body'
     hdr_cells[2].text = 'Timestamp-Time'
-
-    # Aplicar bordas a toda a tabela
-    adicionar_bordas_a_tabela(table)
 
     total_linhas = len(df)
     start_time = time.time()
@@ -59,6 +59,11 @@ def criar_documento_docx(df, audio_dir):
         timestamp = row.get('Timestamp-Time', '')
         body = row.get('Body', '')
         attachment = row.get('Attachment #1', None)
+
+        # Ignorar linhas em branco (onde "From" e "Body" são vazios ou NaN)
+        if pd.isna(from_field) and pd.isna(body):
+            #print(f"Ignorando linha {index}: Linha em branco.")
+            continue
 
         # Criar nova linha na tabela
         row_cells = table.add_row().cells
@@ -113,16 +118,37 @@ def criar_documento_docx(df, audio_dir):
         # Preencher a coluna "Timestamp-Time"
         row_cells[2].text = timestamp
 
+        # Aplicar bordas a toda a tabela
+        adicionar_bordas_a_tabela(table)
+
         # Atualizar a barra de progresso
         progress_bar.progress((index + 1) / total_linhas)
 
     return doc
 
+def verificar_arquivos_na_pasta(file, audio_dir):
+    # Carregar o arquivo Excel
+    df = pd.read_excel(file, engine='openpyxl', header=1)
+
+    # Filtrar linhas em branco
+    df = df.dropna(how='all')
+
+    # Iterar pelas linhas e verificar se pelo menos um arquivo existe na pasta
+    for index, row in df.iterrows():
+        attachment = row.get('Attachment #1', None)
+        if pd.notna(attachment):
+            file_path = os.path.join(audio_dir, attachment)
+            if os.path.exists(file_path):
+                return True  # Arquivo encontrado, a pasta está correta
+    return False  # Nenhum arquivo encontrado, a pasta está incorreta
 
 # Função para processar o Excel e gerar o documento
 def process_excel(file, audio_dir):
     # Carregar o arquivo Excel
     df = pd.read_excel(file, engine='openpyxl', header=1)
+
+    # Filtrar linhas em branco
+    df = df.dropna(how='all')
 
     # Criar o documento .docx
     return criar_documento_docx(df, audio_dir)
