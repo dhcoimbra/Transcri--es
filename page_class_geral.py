@@ -14,46 +14,27 @@ model = DetrForObjectDetection.from_pretrained(r"C:\modelos\detr-resnet-50")
 def detect_objects(image):
     # Processar a imagem para o modelo
     inputs = processor(images=image, return_tensors="pt")
-    
-    # Realizar a detecção de objetos
-    with torch.no_grad():
-        outputs = model(**inputs)
+    outputs = model(**inputs)
 
-    # Definir rótulos manualmente se necessário
-    if not hasattr(model.config, "id2label"):
-        model.config.id2label = {
-            0: "N/A",           # Alguns modelos têm um rótulo 'N/A' para objetos não identificados
-            1: "car",
-            2: "money",
-            3: "house",
-            4: "animal",
-            5: "weapon",
-            6: "drug",
-            7: "gun",
-            8: "ammunition",
-            9: "projectile",
-            10: "cocaine",
-            11: "marihuana",
-            12: "telephone",
-            13: "cell phone",
-            14: "person",
-            
-            # Adicione ou ajuste rótulos conforme necessário para o modelo que está usando
-        }
+    # Definir o tamanho-alvo da imagem e a confiança mínima
+    target_sizes = torch.tensor([image.size[::-1]])  # Converte para altura x largura
+    results = processor.post_process_object_detection(outputs, target_sizes=target_sizes, threshold=0.9)[0]
 
-    target_labels = ["car", "money", "house", "animal", "weapon", "drug","gun","ammunition","projectile","cocaine","marihuana","telephone","cell phone","person"]
     detected_objects = []
 
-    for logit, box in zip(outputs.logits[0], outputs.pred_boxes[0]):
-        prob = logit.softmax(-1)
-        label_index = prob.argmax()
-        label = model.config.id2label.get(label_index.item(), "Unknown")
-        score = prob[label_index].item()
+    # Iterar pelos resultados e extrair informações das detecções
+    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+        # Arredondar coordenadas da caixa delimitadora para duas casas decimais
+        box = [round(i, 2) for i in box.tolist()]
+        label_name = model.config.id2label.get(label.item(), "Unknown")
         
-        # Filtrar por objetos de interesse e pontuação mínima de confiança
-        if label in target_labels and score > 0.7:
-            detected_objects.append((label, score, box.tolist()))
-
+        # Adicionar informações do objeto detectado à lista
+        detected_objects.append({
+            "label": label_name,
+            "confidence": round(score.item(), 3),
+            "box": box
+        })
+    
     return detected_objects
 
 # Função para extrair imagens de um documento PDF
@@ -107,7 +88,6 @@ if uploaded_file is not None:
         if detected_objects:
             st.write("**Objetos Detectados:**")
             for obj in detected_objects:
-                label, score, box = obj
-                st.write(f"- {label.capitalize()} (Confiança: {score:.2f})")
+                st.write(f"- {obj['label'].capitalize()} (Confiança: {obj['confidence']:.2f}) em {obj['box']}")
         else:
             st.write("Nenhum objeto relevante detectado nesta imagem.")
