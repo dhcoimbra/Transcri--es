@@ -42,38 +42,44 @@ def criar_documento_docx(df, audio_dir):
 
     # Adicionar cabeçalho da tabela
     hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'From'
-    hdr_cells[1].text = 'Body'
-    hdr_cells[2].text = 'Timestamp-Time'
+    hdr_cells[0].text = 'Item'
+    hdr_cells[1].text = 'From'
+    hdr_cells[2].text = 'Body'
+    hdr_cells[3].text = 'Timestamp-Time'
 
     total_linhas = len(df)
     start_time = time.time()
 
     # Criar barra de progresso
     progress_bar = st.progress(0)
-
+    item = 0
     # Iterar por todas as linhas do DataFrame original
     for index, row in df.iterrows():
+        item = item + 1
         from_field = row['From']
         to_field = row.get('To', '')
-        timestamp = row.get('Timestamp-Time', '')
-        body = row.get('Body', '')
+        #timestamp = row.get('Timestamp-Time', '')
+        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', ''))
+        body = row['Body'] if pd.notna(row['Body']) else ""#body = row.get('Body', '')
         attachment = row.get('Attachment #1', None)
 
-        # Ignorar linhas em branco (onde "From" e "Body" são vazios ou NaN)
-        if pd.isna(from_field) and pd.isna(body):
-            #print(f"Ignorando linha {index}: Linha em branco.")
+        if not from_field and not body:
             continue
+        # Ignorar linhas em branco (onde "From" e "Body" são vazios ou NaN)
+        """if pd.isna(from_field) and pd.isna(body):
+            #print(f"Ignorando linha {index}: Linha em branco.")
+            continue"""
 
         # Criar nova linha na tabela
         row_cells = table.add_row().cells
-
+        # Preenche a coluna com o número da linha (item)
+        row_cells[0].text = str(item)
         # Preencher a coluna "From"
-        row_cells[0].text = from_field
+        row_cells[1].text = from_field
 
         # Verificar se existe algum anexo (áudio ou imagem) para preencher a coluna "Body"
-        #print(f"Processando linha {index}: Anexo={attachment}")
-
+        print(f"Processando linha {index}: Anexo={attachment}")
+        #print("ANEXO: ", attachment)
         if pd.notna(attachment):
             audio_filename = os.path.basename(attachment)
             #print(f"Anexo detectado: {audio_filename}")
@@ -82,7 +88,7 @@ def criar_documento_docx(df, audio_dir):
                 transcricao_existente = buscar_transcricao(audio_filename)  # Buscar no PostgreSQL
                 if transcricao_existente:
                     #print(f"Transcrição já existe no banco de dados: {audio_filename}")
-                    row_cells[1].text = f"ÁUDIO\nTranscrição: {transcricao_existente}"
+                    row_cells[2].text = f"ÁUDIO\nTranscrição: {transcricao_existente}"
                 else:
                     audio_path = os.path.join(audio_dir, attachment)
                     #print(f"Processando áudio: {audio_path}")
@@ -94,7 +100,7 @@ def criar_documento_docx(df, audio_dir):
                             transcription = transcrever_audio_assemblyai(audio_url)
                             if transcription:
                                 #print(f"Salvando nova transcrição no banco: {audio_filename}")
-                                row_cells[1].text = f"ÁUDIO\nTranscrição: {transcription}"
+                                row_cells[2].text = f"ÁUDIO\nTranscrição: {transcription}"
                                 salvar_transcricao(audio_filename, transcription, from_field, to_field, timestamp)  # Salvar no PostgreSQL
                             else:
                                 print(f"Falha ao transcrever o áudio: {audio_filename}")
@@ -105,18 +111,22 @@ def criar_documento_docx(df, audio_dir):
                 if os.path.exists(image_path):
                     try:
                         #print(f"Incluindo imagem: {image_path}")
-                        row_cells[1].text = ""
+                        row_cells[2].text = ""
                         paragraph = row_cells[1].paragraphs[0]
                         run = paragraph.add_run()
                         run.add_picture(image_path, width=Cm(7))  # Largura de 7 cm
                     except UnidentifiedImageError:
                         #print(f"IMAGEM NÃO SUPORTADA: {attachment}")
-                        row_cells[1].text = f"IMAGEM NÃO SUPORTADA: {attachment}"
+                        row_cells[2].text = f"IMAGEM NÃO SUPORTADA: {attachment}"
+            # Adicionado tratamento para outros arquivos
+            elif attachment.lower().endswith(('.pdf','.docx','.doc','.xls','.xlsx')):
+                #doc_path = os.path.join(audio_dir, attachment)
+                row_cells[2].text = str(attachment)
         else:
-            row_cells[1].text = body
+            row_cells[2].text = body
 
         # Preencher a coluna "Timestamp-Time"
-        row_cells[2].text = timestamp
+        row_cells[3].text = timestamp
 
         # Aplicar bordas a toda a tabela
         adicionar_bordas_a_tabela(table)
