@@ -68,24 +68,30 @@ def gerar_hash_arquivo(caminho_arquivo):
 
 def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
     doc = Document()
-    table = doc.add_table(rows=1, cols=3)
+    table = doc.add_table(rows=1, cols=4)
     table.autofit = False
 
     hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'From'
-    hdr_cells[1].text = 'Body'
-    hdr_cells[2].text = 'Timestamp-Time'
-
+    hdr_cells[0].text = 'Item'
+    hdr_cells[1].text = 'From'
+    hdr_cells[2].text = 'Body'
+    hdr_cells[3].text = 'Timestamp-Time'
+    item = 0
+    # Iterar por todas as linhas do DataFrame original
+           
     for index, row in df_lote.iterrows():
+        item = item + 1
         from_field = row['From']
         to_field = row.get('To', '')
-        timestamp = row.get('Timestamp-Time', '')
+        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', ''))
+        #timestamp = row.get('Timestamp-Time', '')
         body = row.get('Body', '')
         attachment = row.get('Attachment #1', None)
 
         row_cells = table.add_row().cells
-        row_cells[0].text = str(from_field)
-
+        row_cells[0].text = str(item)
+        # Preencher a coluna "From"
+        row_cells[1].text = from_field
 
         if pd.notna(attachment):
             file_path = os.path.join(audio_dir, attachment)
@@ -98,36 +104,37 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
                     transcricao_existente = buscar_transcricao(hash_arquivo)
                     
                     if transcricao_existente:
-                        row_cells[1].text = f"ÁUDIO\nTranscrição: {transcricao_existente}"
+                        row_cells[2].text = f"ÁUDIO\nTranscrição: {transcricao_existente}"
                     else:
                         # Faz upload e transcrição se o arquivo não tiver transcrição prévia
                         audio_url = upload_audio(file_path)
+                        print(file_path)
                         if audio_url:
                             transcription = transcrever_audio_assemblyai(audio_url)
                             if transcription:
-                                row_cells[1].text = f"ÁUDIO\nTranscrição: '{transcription}'"
+                                row_cells[2].text = f"ÁUDIO\nTranscrição: '{transcription}'"
                                 salvar_transcricao(hash_arquivo, transcription, from_field, to_field, timestamp)
                             else:
-                                row_cells[1].text = "Falha ao transcrever o áudio."
+                                row_cells[2].text = "Falha ao transcrever o áudio."
                         else:
-                            row_cells[1].text = "Falha ao enviar o áudio."
+                            row_cells[2].text = "Falha ao enviar o áudio."
                 else:
                     # Mensagem se o arquivo de áudio não for encontrado
-                    row_cells[1].text = "Áudio deletado"
+                    row_cells[2].text = "Áudio deletado"
             
             elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                row_cells[1].text = f"IMAGEM: {attachment}"
+                row_cells[2].text = f"IMAGEM: {attachment}"
                 if os.path.exists(file_path):
                     try:
-                        paragraph = row_cells[1].paragraphs[0]
+                        paragraph = row_cells[2].paragraphs[0]
                         run = paragraph.add_run()
                         run.add_picture(file_path, width=Cm(7))
                     except Exception as e:
-                        row_cells[1].text = f"Erro ao inserir imagem: {e}"
+                        row_cells[2].text = f"Erro ao inserir imagem: {e}"
                 else:
-                    row_cells[1].text = "Imagem não encontrada no caminho especificado."
+                    row_cells[2].text = "Imagem não encontrada no caminho especificado."
             else:
-                row_cells[1].text = str(body) if body else "Sem conteúdo"  # Garantia de que é string
+                row_cells[2].text = str(body) if body else "Sem conteúdo"  # Garantia de que é string
                 #print(body)
 
         # Atualiza a barra de progresso a cada linha
@@ -135,7 +142,7 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
         progresso = linhas_processadas / total_linhas
         progress_bar.progress(progresso)
 
-        row_cells[2].text = str(timestamp)
+        row_cells[3].text = str(timestamp)
 
     lote_file_path = f"lote_{lote_num}.docx"
     doc.save(lote_file_path)
@@ -178,20 +185,23 @@ def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_tra
         doc_lote = Document(doc_path)
 
         for table in doc_lote.tables:
-            new_table = doc_final.add_table(rows=1, cols=3)
+            new_table = doc_final.add_table(rows=1, cols=4)
             new_table.autofit = False
 
             # Recriar cabeçalho
-            hdr_cells = new_table.rows[0].cells
-            hdr_cells[0].text = 'From'
-            hdr_cells[1].text = 'Body'
-            hdr_cells[2].text = 'Timestamp-Time'
+            hdr_cells = table.rows[0].cells
+            hdr_cells[0].text = 'Item'
+            hdr_cells[1].text = 'From'
+            hdr_cells[2].text = 'Body'
+            hdr_cells[3].text = 'Timestamp-Time'
+            item = 0
             
 
             for row in table.rows[1:]:  # Ignorar cabeçalho
+                item = item + 1
                 new_row = new_table.add_row().cells
                 for i, cell in enumerate(row.cells):
-                    if i == 1 and cell.text.startswith("IMAGEM:"):
+                    if i == 2 and cell.text.startswith("IMAGEM:"):
                         # Extrair o nome do arquivo de imagem
                         attachment_name = cell.text.replace("IMAGEM:", "").strip()
                         image_path = os.path.join(audio_dir, attachment_name)
@@ -232,6 +242,7 @@ def formatar_tabela_documento(doc_path):
         section.right_margin = Cm(0.7)
     
     # Configuração de estilo das colunas
+    largura_coluna_item = Cm(1.1)
     largura_coluna_from = Cm(4)
     largura_coluna_body = Cm(12)
     largura_coluna_timestamp = Cm(3.6)
@@ -246,9 +257,10 @@ def formatar_tabela_documento(doc_path):
     for table in doc.tables:
         # Formatação da primeira linha como cabeçalho
         header_row = table.rows[0]
-        header_row.cells[0].text = "De"
-        header_row.cells[1].text = "Mensagem"
-        header_row.cells[2].text = "Data e Hora"
+        header_row.cells[0].text = "Item"
+        header_row.cells[1].text = "De"
+        header_row.cells[2].text = "Mensagem"
+        header_row.cells[3].text = "Data e Hora"
         for cell in header_row.cells:
             cell.paragraphs[0].runs[0].font.bold = True
             cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -257,9 +269,10 @@ def formatar_tabela_documento(doc_path):
         for row_idx, row in enumerate(table.rows):
 
             # Aplicação da largura nas três primeiras células da linha
-            ajustar_largura_celula(row.cells[0], largura_coluna_from)
-            ajustar_largura_celula(row.cells[1], largura_coluna_body)
-            ajustar_largura_celula(row.cells[2], largura_coluna_timestamp)
+            ajustar_largura_celula(row.cells[0], largura_coluna_item)
+            ajustar_largura_celula(row.cells[1], largura_coluna_from)
+            ajustar_largura_celula(row.cells[2], largura_coluna_body)
+            ajustar_largura_celula(row.cells[3], largura_coluna_timestamp)
 
             if row_idx == 0:
                 # Configuração do cabeçalho
@@ -272,7 +285,7 @@ def formatar_tabela_documento(doc_path):
                     definir_borda_celula(cell, "single", "000000")  # Cor da borda preta
 
             else:
-                from_text = row.cells[0].text.strip()
+                from_text = row.cells[1].text.strip()
 
                 # Definir cor para o conteúdo da linha com base no "From"
                 if from_text in cores_conteudos:
@@ -301,6 +314,7 @@ def formatar_tabela_documento(doc_path):
                 row.cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
                 row.cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
                 row.cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+                row.cells[3].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
 
     # Salvar o documento com a formatação aplicada
     doc.save(doc_path)

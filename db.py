@@ -1,8 +1,9 @@
-import psycopg2
+#import psycopg2
 import os
+import sqlite3
 
 # Função para conectar ao banco de dados PostgreSQL
-def conectar():
+"""def conectar():
     try:
         conn = psycopg2.connect(
             host=os.getenv('DB_HOST', 'localhost'),
@@ -15,13 +16,14 @@ def conectar():
         return conn
     except psycopg2.Error as e:
         print(f"Erro ao conectar ao banco de dados: {e}")
-        raise
+        raise"""
 
 
 # Função para criar a tabela de transcrições
 def criar_tabela_transcricoes():
     try:
-        conn = conectar()
+        conn = sqlite3.connect('transcricoes_db.db')
+        #conn = conectar()
         cursor = conn.cursor()
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS transcricoes (
@@ -36,7 +38,7 @@ def criar_tabela_transcricoes():
         cursor.close()
         conn.close()
         #print("Tabela 'transcricoes' criada ou já existe.")
-    except psycopg2.Error as e:
+    except sqlite3.Error as e:
         print(f"Erro ao criar a tabela: {e}")
         raise
 
@@ -44,17 +46,17 @@ def criar_tabela_transcricoes():
 # Função para salvar uma nova transcrição
 def salvar_transcricao(hash_arquivo, transcricao, from_field, to_field, timestamp):
     try:
-        conn = conectar()
+        #conn = conectar()
+        conn = sqlite3.connect('transcricoes_db.db')
         cursor = conn.cursor()
 
         # Verificar os dados a serem inseridos
         #print(f"Inserindo no banco: filename={audio_filename}, transcription={transcription[:30]}...")
-
+        
         cursor.execute(
         """
-        INSERT INTO transcricoes (hash_arquivo, transcricao, from_field, to_field, timestamp)
-        VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (hash_arquivo) DO NOTHING
+        INSERT OR IGNORE INTO transcricoes (hash_arquivo, transcricao, from_field, to_field, timestamp)
+        VALUES (?, ?, ?, ?, ?)
         """,
         (hash_arquivo, transcricao, from_field, to_field, timestamp)
     )
@@ -64,7 +66,7 @@ def salvar_transcricao(hash_arquivo, transcricao, from_field, to_field, timestam
         cursor.close()
         conn.close()
 
-    except psycopg2.Error as e:
+    except sqlite3.Error as e:
         print(f"Erro ao salvar transcrição no banco de dados: {e}")
         raise
 
@@ -73,13 +75,14 @@ def salvar_transcricao(hash_arquivo, transcricao, from_field, to_field, timestam
 # Função para buscar uma transcrição já existente
 def buscar_transcricao(hash_arquivo):
     try:
-        conn = conectar()
+        #conn = conectar()
+        conn = sqlite3.connect('transcricoes_db.db')
         cursor = conn.cursor()
-        cursor.execute("SELECT transcricao FROM transcricoes WHERE hash_arquivo = %s", (hash_arquivo,))
+        cursor.execute("SELECT transcricao FROM transcricoes WHERE hash_arquivo = ?", (hash_arquivo,))
         result = cursor.fetchone()
         cursor.close()
         conn.close()
         return result[0] if result else None
-    except psycopg2.Error as e:
+    except sqlite3.Error as e:
         print(f"Erro ao buscar transcrição no banco de dados: {e}")
         raise
