@@ -2,13 +2,28 @@ import os
 import pandas as pd
 import time
 from docx import Document
-from docx.shared import Cm
+from docx.shared import Cm, Pt, RGBColor
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from assemblyai import upload_audio, transcrever_audio_assemblyai
-from PIL import UnidentifiedImageError
+from PIL import UnidentifiedImageError, Image
 from db import salvar_transcricao, buscar_transcricao
 import streamlit as st
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+import hashlib
+
+def redimensionar_imagem(image_path, max_width=7):
+    """Redimensiona a imagem para ter uma largura máxima de 7 cm, mantendo a proporção."""
+    with Image.open(image_path) as img:
+        width, height = img.size
+        aspect_ratio = height / width
+        new_width = min(width, max_width * 37.7953)  # Conversão para pixels (1 cm ≈ 37.7953 pixels)
+        new_height = int(new_width * aspect_ratio)
+        img = img.resize((int(new_width), new_height), Image.LANCZOS)
+        # Salvar a imagem temporária redimensionada
+        temp_path = f"{image_path}_temp_resized.jpg"
+        img.save(temp_path, format="JPEG", quality=85)
+        return temp_path
 
 # Função para adicionar bordas a todas as células da tabela
 def adicionar_bordas_a_tabela(table):
@@ -27,105 +42,6 @@ def adicionar_bordas_a_tabela(table):
             
             tc_pr.append(tc_borders)
 
-# Função para criar o documento .docx com uma tabela no formato desejado e imagens
-def criar_documento_docx(df, audio_dir):
-    doc = Document()
-
-     # Filtrar linhas em branco
-    df = df.dropna(how='all')  # Remove linhas onde todas as células estão em branco
-
-    # Adicionar tabela com 3 colunas: "From", "Body", "Timestamp-Time"
-    table = doc.add_table(rows=1, cols=3)
-
-    # Remover travamento das colunas
-    table.autofit = False
-
-    # Adicionar cabeçalho da tabela
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'From'
-    hdr_cells[1].text = 'Body'
-    hdr_cells[2].text = 'Timestamp-Time'
-
-    total_linhas = len(df)
-    start_time = time.time()
-
-    # Criar barra de progresso
-    progress_bar = st.progress(0)
-
-    # Iterar por todas as linhas do DataFrame original
-    for index, row in df.iterrows():
-        from_field = row['From']
-        to_field = row.get('To', '')
-        timestamp = row.get('Timestamp-Time', '')
-        body = row.get('Body', '')
-        attachment = row.get('Attachment #1', None)
-
-        # Ignorar linhas em branco (onde "From" e "Body" são vazios ou NaN)
-        if pd.isna(from_field) and pd.isna(body):
-            #print(f"Ignorando linha {index}: Linha em branco.")
-            continue
-
-        # Criar nova linha na tabela
-        row_cells = table.add_row().cells
-
-        # Preencher a coluna "From"
-        row_cells[0].text = from_field
-
-        # Verificar se existe algum anexo (áudio ou imagem) para preencher a coluna "Body"
-        #print(f"Processando linha {index}: Anexo={attachment}")
-
-        if pd.notna(attachment):
-            audio_filename = os.path.basename(attachment)
-            #print(f"Anexo detectado: {audio_filename}")
-
-            if attachment.endswith('.opus'):
-                transcricao_existente = buscar_transcricao(audio_filename)  # Buscar no PostgreSQL
-                if transcricao_existente:
-                    #print(f"Transcrição já existe no banco de dados: {audio_filename}")
-                    row_cells[1].text = f"ÁUDIO\nTranscrição: {transcricao_existente}"
-                else:
-                    audio_path = os.path.join(audio_dir, attachment)
-                    #print(f"Processando áudio: {audio_path}")
-
-                    if os.path.exists(audio_path):
-                        audio_url = upload_audio(audio_path)
-                        if audio_url:
-                            #print(f"Áudio enviado para transcrição: {audio_url}")
-                            transcription = transcrever_audio_assemblyai(audio_url)
-                            if transcription:
-                                #print(f"Salvando nova transcrição no banco: {audio_filename}")
-                                row_cells[1].text = f"ÁUDIO\nTranscrição: {transcription}"
-                                salvar_transcricao(audio_filename, transcription, from_field, to_field, timestamp)  # Salvar no PostgreSQL
-                            else:
-                                print(f"Falha ao transcrever o áudio: {audio_filename}")
-                        else:
-                            print(f"Falha ao enviar o áudio: {audio_path}")
-            elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                image_path = os.path.join(audio_dir, attachment)
-                if os.path.exists(image_path):
-                    try:
-                        #print(f"Incluindo imagem: {image_path}")
-                        row_cells[1].text = ""
-                        paragraph = row_cells[1].paragraphs[0]
-                        run = paragraph.add_run()
-                        run.add_picture(image_path, width=Cm(7))  # Largura de 7 cm
-                    except UnidentifiedImageError:
-                        #print(f"IMAGEM NÃO SUPORTADA: {attachment}")
-                        row_cells[1].text = f"IMAGEM NÃO SUPORTADA: {attachment}"
-        else:
-            row_cells[1].text = body
-
-        # Preencher a coluna "Timestamp-Time"
-        row_cells[2].text = timestamp
-
-        # Aplicar bordas a toda a tabela
-        adicionar_bordas_a_tabela(table)
-
-        # Atualizar a barra de progresso
-        progress_bar.progress((index + 1) / total_linhas)
-
-    return doc
-
 def verificar_arquivos_na_pasta(file, audio_dir):
     # Carregar o arquivo Excel
     df = pd.read_excel(file, engine='openpyxl', header=1)
@@ -142,13 +58,276 @@ def verificar_arquivos_na_pasta(file, audio_dir):
                 return True  # Arquivo encontrado, a pasta está correta
     return False  # Nenhum arquivo encontrado, a pasta está incorreta
 
-# Função para processar o Excel e gerar o documento
-def process_excel(file, audio_dir):
-    # Carregar o arquivo Excel
-    df = pd.read_excel(file, engine='openpyxl', header=1)
+def gerar_hash_arquivo(caminho_arquivo):
+    hash_sha256 = hashlib.sha256()
+    with open(caminho_arquivo, "rb") as f:
+        # Lê o arquivo em blocos para calcular o hash (eficiente para arquivos grandes)
+        for bloco in iter(lambda: f.read(4096), b""):
+            hash_sha256.update(bloco)
+    return hash_sha256.hexdigest()
 
-    # Filtrar linhas em branco
-    df = df.dropna(how='all')
+def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
+    doc = Document()
+    table = doc.add_table(rows=1, cols=3)
+    table.autofit = False
 
-    # Criar o documento .docx
-    return criar_documento_docx(df, audio_dir)
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'From'
+    hdr_cells[1].text = 'Body'
+    hdr_cells[2].text = 'Timestamp-Time'
+
+    for index, row in df_lote.iterrows():
+        from_field = row['From']
+        to_field = row.get('To', '')
+        timestamp = row.get('Timestamp-Time', '')
+        body = row.get('Body', '')
+        attachment = row.get('Attachment #1', None)
+
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(from_field)
+
+
+        if pd.notna(attachment):
+            file_path = os.path.join(audio_dir, attachment)
+            
+            if attachment.endswith('.opus'):
+                # Verifica se o arquivo existe
+                if os.path.exists(file_path):
+                    # Gerar hash do arquivo se ele existir
+                    hash_arquivo = gerar_hash_arquivo(file_path)
+                    transcricao_existente = buscar_transcricao(hash_arquivo)
+                    
+                    if transcricao_existente:
+                        row_cells[1].text = f"ÁUDIO\nTranscrição: {transcricao_existente}"
+                    else:
+                        # Faz upload e transcrição se o arquivo não tiver transcrição prévia
+                        audio_url = upload_audio(file_path)
+                        if audio_url:
+                            transcription = transcrever_audio_assemblyai(audio_url)
+                            if transcription:
+                                row_cells[1].text = f"ÁUDIO\nTranscrição: '{transcription}'"
+                                salvar_transcricao(hash_arquivo, transcription, from_field, to_field, timestamp)
+                            else:
+                                row_cells[1].text = "Falha ao transcrever o áudio."
+                        else:
+                            row_cells[1].text = "Falha ao enviar o áudio."
+                else:
+                    # Mensagem se o arquivo de áudio não for encontrado
+                    row_cells[1].text = "Áudio deletado"
+            
+            elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                row_cells[1].text = f"IMAGEM: {attachment}"
+                if os.path.exists(file_path):
+                    try:
+                        paragraph = row_cells[1].paragraphs[0]
+                        run = paragraph.add_run()
+                        run.add_picture(file_path, width=Cm(7))
+                    except Exception as e:
+                        row_cells[1].text = f"Erro ao inserir imagem: {e}"
+                else:
+                    row_cells[1].text = "Imagem não encontrada no caminho especificado."
+            else:
+                row_cells[1].text = str(body) if body else "Sem conteúdo"  # Garantia de que é string
+                #print(body)
+
+        # Atualiza a barra de progresso a cada linha
+        linhas_processadas += 1
+        progresso = linhas_processadas / total_linhas
+        progress_bar.progress(progresso)
+
+        row_cells[2].text = str(timestamp)
+
+    lote_file_path = f"lote_{lote_num}.docx"
+    doc.save(lote_file_path)
+    return lote_file_path
+
+
+def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
+    df = pd.read_excel(file, engine='openpyxl', header=1).dropna(how='all')
+
+    # Aplicar o filtro na coluna "Tag" se necessário
+    if filtro_tag:
+        df = df[df['Tag'].notna()]  # Filtra apenas linhas onde "Tag" não está vazia
+    #print(filtro_tag)
+
+    df = df.fillna('')
+
+    total_linhas = len(df)  # Total de linhas da planilha
+    
+    linhas_processadas = 0  # Contador de linhas processadas
+    lotes = [df[i:i + 500] for i in range(0, len(df), 500)]
+    #total_passos = len(lotes)
+
+    documentos_gerados = []
+    #progresso = 0
+
+    for lote_num, df_lote in enumerate(lotes, start=1):
+        lote_file = criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas)
+        documentos_gerados.append(lote_file)
+        #progresso += 1
+
+        linhas_processadas += len(df_lote)
+        
+    return documentos_gerados
+
+# Função para recriar o conteúdo de cada lote no documento final, incluindo as imagens
+def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_transcricoes_final.docx"):
+    doc_final = Document()
+
+    for idx, doc_path in enumerate(documentos):
+        doc_lote = Document(doc_path)
+
+        for table in doc_lote.tables:
+            new_table = doc_final.add_table(rows=1, cols=3)
+            new_table.autofit = False
+
+            # Recriar cabeçalho
+            hdr_cells = new_table.rows[0].cells
+            hdr_cells[0].text = 'From'
+            hdr_cells[1].text = 'Body'
+            hdr_cells[2].text = 'Timestamp-Time'
+            
+
+            for row in table.rows[1:]:  # Ignorar cabeçalho
+                new_row = new_table.add_row().cells
+                for i, cell in enumerate(row.cells):
+                    if i == 1 and cell.text.startswith("IMAGEM:"):
+                        # Extrair o nome do arquivo de imagem
+                        attachment_name = cell.text.replace("IMAGEM:", "").strip()
+                        image_path = os.path.join(audio_dir, attachment_name)
+
+                        # Inserir a imagem se o caminho existir
+                        if os.path.exists(image_path):
+                            try:
+                                paragraph = new_row[i].paragraphs[0]
+                                run = paragraph.add_run()
+                                run.add_picture(image_path, width=Cm(7))
+                            except Exception as e:
+                                new_row[i].text = f"Erro ao inserir imagem: {e}"
+                        else:
+                            new_row[i].text = f"Imagem '{attachment_name}' não encontrada no caminho especificado."
+                    else:
+                        new_row[i].text = cell.text
+
+            # Adicionar quebra de página entre lotes
+            if idx < len(documentos) - 1:
+                doc_final.add_page_break()
+
+
+    doc_final.save(doc_final_path)
+
+    formatar_tabela_documento(doc_final_path)
+
+    return doc_final_path
+
+def formatar_tabela_documento(doc_path):
+    doc = Document(doc_path)
+    
+    # Configuração de margens mínimas na página
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Cm(2)
+        section.bottom_margin = Cm(2)
+        section.left_margin = Cm(1)
+        section.right_margin = Cm(0.7)
+    
+    # Configuração de estilo das colunas
+    largura_coluna_from = Cm(4)
+    largura_coluna_body = Cm(12)
+    largura_coluna_timestamp = Cm(3.6)
+
+    # Dicionário para mapear conteúdos únicos para cores
+    cores_conteudos = {
+        "System Message System Message": "D9D9D9"  # Cor fixa para mensagens de sistema
+    }
+    cores_alternadas = ["B6DDE8", "D6E3BC"]  # Cores para conteúdos alternados
+    cor_indice = 0  # Índice para alternar entre as cores
+
+    for table in doc.tables:
+        # Formatação da primeira linha como cabeçalho
+        header_row = table.rows[0]
+        header_row.cells[0].text = "De"
+        header_row.cells[1].text = "Mensagem"
+        header_row.cells[2].text = "Data e Hora"
+        for cell in header_row.cells:
+            cell.paragraphs[0].runs[0].font.bold = True
+            cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Aplicação de largura de coluna, formatação de linhas e bordas
+        for row_idx, row in enumerate(table.rows):
+
+            # Aplicação da largura nas três primeiras células da linha
+            ajustar_largura_celula(row.cells[0], largura_coluna_from)
+            ajustar_largura_celula(row.cells[1], largura_coluna_body)
+            ajustar_largura_celula(row.cells[2], largura_coluna_timestamp)
+
+            if row_idx == 0:
+                # Configuração do cabeçalho
+                #row.cells[0].width = largura_coluna_from
+                #row.cells[1].width = largura_coluna_body
+                #row.cells[2].width = largura_coluna_timestamp
+
+                # Aplicar bordas ao cabeçalho
+                for cell in row.cells:
+                    definir_borda_celula(cell, "single", "000000")  # Cor da borda preta
+
+            else:
+                from_text = row.cells[0].text.strip()
+
+                # Definir cor para o conteúdo da linha com base no "From"
+                if from_text in cores_conteudos:
+                    cor_linha = cores_conteudos[from_text]
+                else:
+                    cor_linha = cores_alternadas[cor_indice % len(cores_alternadas)]
+                    cores_conteudos[from_text] = cor_linha
+                    cor_indice += 1
+
+                # Aplicação da cor de fundo e bordas para cada célula da linha
+                for cell in row.cells:
+                    # Aplicar cor de fundo
+                    cell_tcPr = cell._element.find(qn("w:tcPr"))
+                    if cell_tcPr is None:
+                        cell_tcPr = OxmlElement("w:tcPr")
+                        cell._element.append(cell_tcPr)
+                    
+                    shading_elm = OxmlElement("w:shd")
+                    shading_elm.set(qn("w:fill"), cor_linha)
+                    cell_tcPr.append(shading_elm)
+
+                    # Aplicar bordas em cada célula
+                    definir_borda_celula(cell, "single", "000000")  # Cor da borda preta
+                    
+                # Centralizar conteúdo da coluna "De"
+                row.cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+                row.cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+                row.cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    # Salvar o documento com a formatação aplicada
+    doc.save(doc_path)
+
+def definir_borda_celula(cell, borda_tipo="single", borda_cor="000000"):
+    # Verificar e adicionar `w:tcPr` se não existir
+    tcPr = cell._element.find(qn("w:tcPr"))
+    if tcPr is None:
+        tcPr = OxmlElement("w:tcPr")
+        cell._element.append(tcPr)
+    
+    for borda in ["top", "bottom", "left", "right"]:
+        borda_element = OxmlElement(f"w:{borda}")
+        borda_element.set(qn("w:val"), borda_tipo)
+        borda_element.set(qn("w:sz"), "4")  # Espessura da borda
+        borda_element.set(qn("w:color"), borda_cor)
+        tcPr.append(borda_element)
+
+def ajustar_largura_celula(cell, largura):
+    # Adiciona manualmente o elemento `w:tcPr` se ele não existir
+    tcPr = cell._element.find(qn("w:tcPr"))
+    if tcPr is None:
+        tcPr = OxmlElement("w:tcPr")
+        cell._element.append(tcPr)
+    
+    # Adiciona ou atualiza o elemento de largura da célula
+    cell_width = OxmlElement("w:tcW")
+    cell_width.set(qn("w:w"), str(int(largura.cm * 567)))  # Converter Cm para unidade de medida interna do Word
+    cell_width.set(qn("w:type"), "dxa")
+    tcPr.append(cell_width)

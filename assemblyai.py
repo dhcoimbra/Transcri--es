@@ -1,8 +1,13 @@
 import requests
 import time
+import os
+from dotenv import load_dotenv
 
-# Coloque aqui a sua chave de API AssemblyAI
-ASSEMBLYAI_API_KEY = "ddc0694917fb46ee9588b692540abc28"
+# Carregar variáveis do .env
+load_dotenv()
+
+# Pegar a chave da API do AssemblyAI
+ASSEMBLYAI_API_KEY = os.getenv('ASSEMBLYAI_API_KEY')
 
 # Função para fazer o upload do arquivo de áudio para a AssemblyAI
 def upload_audio(audio_path):
