@@ -11,6 +11,7 @@ from db import salvar_transcricao, buscar_transcricao
 import streamlit as st
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import hashlib
+import re
 
 def redimensionar_imagem(image_path, max_width=7):
     """Redimensiona a imagem para ter uma largura máxima de 7 cm, mantendo a proporção."""
@@ -345,3 +346,260 @@ def ajustar_largura_celula(cell, largura):
     cell_width.set(qn("w:w"), str(int(largura.cm * 567)))  # Converter Cm para unidade de medida interna do Word
     cell_width.set(qn("w:type"), "dxa")
     tcPr.append(cell_width)
+    
+def anonimizar():
+    
+    return
+
+def anonimizar_interlocutores(docx_path, output_path):
+    
+    
+    # Carregar o documento .docx
+    doc = Document(docx_path)
+    
+    # Armazenar os valores distintos encontrados para Interlocutor 1 e Interlocutor 2
+    interlocutor_map = {}
+    interlocutor_count = 1  # Contador para nomeação dos interlocutores
+    
+    # Iterar sobre todas as tabelas do documento
+    for table in doc.tables:
+        # Iterar sobre as linhas da tabela, começando da segunda linha
+        for i, row in enumerate(table.rows):
+            # Ignorar a primeira linha (títulos da tabela)
+            if i == 0:
+                continue
+            
+            # Verificar se a linha tem pelo menos duas colunas
+            if len(row.cells) >= 2:
+                # Obter o valor da segunda coluna
+                cell_value = row.cells[1].text.strip()
+                
+                # Verificar se o valor é "System Message" para ignorá-lo
+                if cell_value == "System Message" or cell_value == "System Message System Message":
+                    continue
+                
+                # Verificar se o valor ainda não foi mapeado e há menos de dois interlocutores
+                if cell_value and cell_value not in interlocutor_map:
+                    if interlocutor_count <= 2:
+                        # Mapear o valor atual para "Interlocutor 1" ou "Interlocutor 2"
+                        interlocutor_map[cell_value] = f"Interlocutor {interlocutor_count}"
+                        interlocutor_count += 1
+
+                # Substituir o valor caso esteja no mapeamento
+                if cell_value in interlocutor_map:
+                    row.cells[1].text = interlocutor_map[cell_value]
+    doc.save(output_path)
+    # Salvar o documento modificado
+    st.write("Anonimização concluída. Documento salvo em:", output_path)
+    
+    
+    # Exibir o mapeamento dos interlocutores
+    st.write("Mapeamento dos Interlocutores:")
+    for original, anonimo in interlocutor_map.items():
+        st.write(f"{anonimo}: {original}")
+        
+from docx import Document
+import streamlit as st
+import re
+
+def anonimizar_interlocutores2(docx_path, output_path):
+    st.write("INICIOU ANONIMIZAÇÃO")
+    
+    # Carregar o documento .docx
+    doc = Document(docx_path)
+    
+    # Armazenar os identificadores principais encontrados para Interlocutor 1 e Interlocutor 2
+    interlocutor_map = {}
+    interlocutor_count = 1  # Contador para nomeação dos interlocutores
+    
+    # Iterar sobre todas as tabelas do documento
+    for table in doc.tables:
+        # Iterar sobre as linhas da tabela, começando da segunda linha
+        for i, row in enumerate(table.rows):
+            # Ignorar a primeira linha (títulos da tabela)
+            if i == 0:
+                continue
+            
+            # Verificar se a linha tem pelo menos três colunas
+            if len(row.cells) >= 3:
+                # Obter os valores da segunda e terceira colunas
+                cell_value_2 = row.cells[1].text.strip()
+                cell_value_3 = row.cells[2].text.strip()
+                
+                # Se a segunda coluna não for "System Message", aplicar substituição total
+                if cell_value_2 != "System Message" and cell_value_2 != "System Message System Message":
+                    # Extrair apenas o identificador principal (por exemplo, número de telefone com domínio)
+                    identifier_match = re.search(r"\b\d{10,}@\w+\.\w+\b", cell_value_2)
+                    if identifier_match:
+                        identifier = identifier_match.group(0)
+                        
+                        # Mapear o identificador se ainda não estiver mapeado
+                        if identifier not in interlocutor_map:
+                            if interlocutor_count <= 2:
+                                interlocutor_map[identifier] = f"Interlocutor {interlocutor_count}"
+                                interlocutor_count += 1
+                        
+                        # Substituição total na segunda coluna
+                        if identifier in interlocutor_map:
+                            row.cells[1].text = interlocutor_map[identifier]
+                
+                # Sempre aplicar a substituição parcial na terceira coluna, independentemente do valor da coluna 2
+                for identifier, anonimo in interlocutor_map.items():
+                    if identifier in cell_value_3:
+                        row.cells[2].text = re.sub(identifier, anonimo, cell_value_3)
+    
+    # Salvar o documento modificado
+    doc.save(output_path)
+    st.write("Anonimização concluída. Documento salvo em:", output_path)
+    
+    # Exibir o mapeamento dos interlocutores
+    st.write("Mapeamento dos Interlocutores:")
+    for original, anonimo in interlocutor_map.items():
+        st.write(f"{anonimo}: {original}")
+
+from docx import Document
+import streamlit as st
+import re
+
+def anonimizar_interlocutores3(docx_path, output_path):
+    st.write("INICIOU ANONIMIZAÇÃO")
+    
+    # Carregar o documento .docx
+    doc = Document(docx_path)
+    
+    # Etapa 1: Mapeamento dos identificadores principais para Interlocutor 1 e Interlocutor 2
+    interlocutor_map = {}
+    interlocutor_count = 1  # Contador para nomeação dos interlocutores
+    
+    # Primeiro, percorremos todas as tabelas para identificar os interlocutores
+    for table in doc.tables:
+        for i, row in enumerate(table.rows):
+            # Ignorar a primeira linha (títulos da tabela)
+            if i == 0:
+                continue
+
+            # Verificar se a linha tem pelo menos duas colunas
+            if len(row.cells) >= 2:
+                cell_value_2 = row.cells[1].text.strip()
+                
+                # Ignorar linhas da segunda coluna com "System Message"
+                if cell_value_2 != "System Message":
+                    # Extrair o identificador principal (exemplo: número de telefone com domínio)
+                    identifier_match = re.search(r"\b\d{10,}@\w+\.\w+\b", cell_value_2)
+                    if identifier_match:
+                        identifier = identifier_match.group(0)
+                        
+                        # Mapear o identificador se ainda não estiver mapeado e temos menos de 2 interlocutores
+                        if identifier not in interlocutor_map and interlocutor_count <= 2:
+                            interlocutor_map[identifier] = f"Interlocutor {interlocutor_count}"
+                            interlocutor_count += 1
+    
+    # Exibir o mapeamento dos interlocutores
+    st.write("Mapeamento dos Interlocutores:")
+    for original, anonimo in interlocutor_map.items():
+        st.write(f"{anonimo}: {original}")
+    
+    # Etapa 2: Substituição dos identificadores no documento
+    for table in doc.tables:
+        for i, row in enumerate(table.rows):
+            # Ignorar a primeira linha (títulos da tabela)
+            if i == 0:
+                continue
+            
+            # Verificar se a linha tem pelo menos duas colunas
+            if len(row.cells) >= 2:
+                # Substituição total na segunda coluna, se não for "System Message"
+                cell_value_2 = row.cells[1].text.strip()
+                if cell_value_2 != "System Message":
+                    for identifier, anonimo in interlocutor_map.items():
+                        if identifier in cell_value_2:
+                            row.cells[1].text = anonimo  # Substituição total
+                
+                # Substituição parcial na terceira coluna
+                if len(row.cells) >= 3:
+                    cell_value_3 = row.cells[2].text.strip()
+                    for identifier, anonimo in interlocutor_map.items():
+                        if identifier in cell_value_3:
+                            # Substituição parcial do identificador no conteúdo da célula
+                            cell_value_3 = re.sub(identifier, anonimo, cell_value_3)
+                    row.cells[2].text = cell_value_3  # Atualizar a célula com o texto modificado
+    
+    # Salvar o documento modificado
+    doc.save(output_path)
+    st.write("Anonimização concluída. Documento salvo em:", output_path)
+
+
+
+def anonimizar_interlocutores4(docx_path, output_path):
+    st.write("INICIOU ANONIMIZAÇÃO")
+    
+    # Carregar o documento .docx
+    doc = Document(docx_path)
+    
+    # Etapa 1: Mapeamento dos identificadores principais para Interlocutor 1 e Interlocutor 2
+    interlocutor_map = {}
+    interlocutor_count = 1  # Contador para nomeação dos interlocutores
+    
+    # Primeiro, percorremos todas as tabelas para identificar os interlocutores
+    for table in doc.tables:
+        for i, row in enumerate(table.rows):
+            # Ignorar a primeira linha (títulos da tabela)
+            if i == 0:
+                continue
+
+            # Verificar se a linha tem pelo menos duas colunas
+            if len(row.cells) >= 2:
+                cell_value_2 = row.cells[1].text.strip()
+                
+                # Ignorar linhas da segunda coluna com "System Message"
+                if cell_value_2 != "System Message" and cell_value_2 != "System Message System Message":
+                    # Extrair o identificador principal (exemplo: número de telefone com domínio)
+                    identifier_match = re.search(r"\b\d{10,}@\w+\.\w+\b", cell_value_2)
+                    if identifier_match:
+                        identifier = identifier_match.group(0)
+                        
+                        # Mapear o identificador se ainda não estiver mapeado e temos menos de 2 interlocutores
+                        if identifier not in interlocutor_map and interlocutor_count <= 2:
+                            interlocutor_map[identifier] = f"Interlocutor {interlocutor_count}"
+                            interlocutor_count += 1
+    
+    # Exibir o mapeamento dos interlocutores
+    st.write("Mapeamento dos Interlocutores:")
+    for original, anonimo in interlocutor_map.items():
+        st.write(f"{anonimo}: {original}")
+    
+    # Etapa 2: Substituição dos identificadores no documento
+    for table in doc.tables:
+        for i, row in enumerate(table.rows):
+            # Ignorar a primeira linha (títulos da tabela)
+            if i == 0:
+                continue
+            
+            # Verificar se a linha tem pelo menos duas colunas
+            if len(row.cells) >= 2:
+                # Substituição total na segunda coluna, se não for "System Message"
+                cell_value_2 = row.cells[1].text.strip()
+                if cell_value_2 != "System Message" and cell_value_2 != "System Message System Message":
+                    for identifier, anonimo in interlocutor_map.items():
+                        if identifier in cell_value_2:
+                            # Redefinir o texto da célula completamente para o nome do interlocutor
+                            row.cells[1].text = anonimo  # Substituição total e direta
+                
+                # Verificação para ignorar células com imagens na terceira coluna
+                if len(row.cells) >= 3:
+                    cell = row.cells[2]
+                    has_image = any([shape for shape in cell._element.xpath('.//w:drawing')])
+                    
+                    if not has_image:  # Apenas modificar se não houver imagem
+                        for paragraph in cell.paragraphs:
+                            cell_text = paragraph.text
+                            # Realizar substituição no texto do parágrafo com regex para capturar trechos extras
+                            for identifier, anonimo in interlocutor_map.items():
+                                # Substituir qualquer ocorrência do identificador seguido por caracteres adicionais
+                                cell_text = re.sub(rf"\b{re.escape(identifier)}\b(?:\.\w+)?", anonimo, cell_text)
+                            # Atualizar o texto do parágrafo
+                            paragraph.text = cell_text
+    
+    # Salvar o documento modificado
+    doc.save(output_path)
+    st.write("Anonimização concluída. Documento salvo em:", output_path)

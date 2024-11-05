@@ -3,6 +3,7 @@ from utils import verificar_arquivos_na_pasta, processar_em_lotes, recriar_docum
 from streamlit_option_menu import option_menu
 from db import criar_tabela_transcricoes
 import os
+import utils
 
 with st.sidebar:
     selected = option_menu(
@@ -67,11 +68,30 @@ if selected == "Conversão Cellebrite":
                 # Limpar arquivos temporários dos lotes
                 for doc_path in documentos_gerados:
                     os.remove(doc_path)
+                st.session_state['doc_final_path'] = doc_final_path    
+                
+                    
+                    
             else:
                 st.warning("A pasta fornecida não contém os arquivos de mídia mencionados no arquivo Excel.")
+            
+            
         else:
             st.warning("Por favor, faça o upload do arquivo Excel e insira o caminho dos áudios.")
+    if "doc_final_path" in st.session_state and st.button("Gerar anonimização"):
+        
+        anonimizado_path = os.path.join(os.getcwd(), "Anonimizado.docx")  # Cria um caminho absoluto para salvar o documento anonimizado
+        utils.anonimizar_interlocutores4(st.session_state['doc_final_path'], anonimizado_path)
 
+        # Exibir link de download para o documento anonimizado
+        with open(anonimizado_path, "rb") as f:
+            st.download_button(
+                label="Baixar documento anonimizado",
+                data=f,
+                file_name="Anonimizado.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+    
 if selected == "Consulta números":
     st.title("Números Qlik")
     st.write("Esta é a página de Números Qlik.")
