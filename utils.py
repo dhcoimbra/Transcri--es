@@ -88,7 +88,8 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
         #timestamp = row.get('Timestamp-Time', '')
         body = row.get('Body', '')
         attachment = row.get('Attachment #1', None)
-
+        #forwarded = row.get('Label', None)
+        
         row_cells = table.add_row().cells
         row_cells[0].text = str(item)
         # Preencher a coluna "From"
@@ -150,6 +151,92 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
     return lote_file_path
 
 
+#
+#####
+######## VERIFICAR ESSA FUNÇÃO NÃO ESTÁ COLOCANDO A IMAGEM
+def criar_documento_para_lote2(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
+    doc = Document()
+    table = doc.add_table(rows=1, cols=4)
+    table.autofit = False
+
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'Item'
+    hdr_cells[1].text = 'From'
+    hdr_cells[2].text = 'Body'
+    hdr_cells[3].text = 'Timestamp-Time'
+    item = 0
+           
+    for index, row in df_lote.iterrows():
+        item += 1
+        from_field = row['From']
+        to_field = row.get('To', '')
+        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', ''))
+        body = row.get('Body', '')
+        attachment = row.get('Attachment #1', None)
+        label = row.get('Label', '')
+        #is_forwarded = row.get('Label', '') == 'Forwarded' or 'Forwarded '
+        is_forwarded = "Forwarded" in label.strip()
+        
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(item)
+        row_cells[1].text = from_field
+
+        # Prefixo "ENCAMINHADO" se for uma mensagem encaminhada
+        prefixo_encaminhado = "ENCAMINHADO\n" if is_forwarded else ""
+
+        if pd.notna(attachment):
+            file_path = os.path.join(audio_dir, attachment)
+            
+            if attachment.endswith('.opus'):
+                if os.path.exists(file_path):
+                    hash_arquivo = gerar_hash_arquivo(file_path)
+                    transcricao_existente = buscar_transcricao(hash_arquivo)
+                    
+                    if transcricao_existente:
+                        row_cells[2].text = f"{prefixo_encaminhado}ÁUDIO\nTranscrição: {transcricao_existente}"
+                    else:
+                        audio_url = upload_audio(file_path)
+                        if audio_url:
+                            transcription = transcrever_audio_assemblyai(audio_url)
+                            if transcription:
+                                row_cells[2].text = f"{prefixo_encaminhado}ÁUDIO\nTranscrição: '{transcription}'"
+                                salvar_transcricao(hash_arquivo, transcription, from_field, to_field, timestamp)
+                            else:
+                                row_cells[2].text = f"{prefixo_encaminhado}Falha ao transcrever o áudio."
+                        else:
+                            row_cells[2].text = f"{prefixo_encaminhado}Falha ao enviar o áudio."
+                else:
+                    row_cells[2].text = f"{prefixo_encaminhado}Áudio deletado"
+            
+            elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                row_cells[2].text = f"{prefixo_encaminhado}IMAGEM: {attachment}"
+                if os.path.exists(file_path):
+                    try:
+                        paragraph = row_cells[2].paragraphs[0]
+                        run = paragraph.add_run()
+                        run.add_picture(file_path, width=Cm(7))
+                    except Exception as e:
+                        row_cells[2].text = f"{prefixo_encaminhado}Erro ao inserir imagem: {e}"
+                else:
+                    row_cells[2].text = f"{prefixo_encaminhado}Imagem não encontrada no caminho especificado."
+            else:
+                row_cells[2].text = f"{prefixo_encaminhado}{str(body) if body else 'Sem conteúdo'}"
+
+        else:
+            row_cells[2].text = f"{prefixo_encaminhado}{str(body) if body else 'Sem conteúdo'}"
+
+        linhas_processadas += 1
+        progresso = linhas_processadas / total_linhas
+        progress_bar.progress(progresso)
+
+        row_cells[3].text = str(timestamp)
+
+    lote_file_path = f"lote_{lote_num}.docx"
+    doc.save(lote_file_path)
+    return lote_file_path
+
+
+
 def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
     df = pd.read_excel(file, engine='openpyxl', header=1).dropna(how='all')
 
@@ -170,7 +257,7 @@ def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
     #progresso = 0
 
     for lote_num, df_lote in enumerate(lotes, start=1):
-        lote_file = criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas)
+        lote_file = criar_documento_para_lote2(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas)
         documentos_gerados.append(lote_file)
         #progresso += 1
 
@@ -347,188 +434,6 @@ def ajustar_largura_celula(cell, largura):
     cell_width.set(qn("w:type"), "dxa")
     tcPr.append(cell_width)
     
-def anonimizar():
-    
-    return
-
-def anonimizar_interlocutores(docx_path, output_path):
-    
-    
-    # Carregar o documento .docx
-    doc = Document(docx_path)
-    
-    # Armazenar os valores distintos encontrados para Interlocutor 1 e Interlocutor 2
-    interlocutor_map = {}
-    interlocutor_count = 1  # Contador para nomeação dos interlocutores
-    
-    # Iterar sobre todas as tabelas do documento
-    for table in doc.tables:
-        # Iterar sobre as linhas da tabela, começando da segunda linha
-        for i, row in enumerate(table.rows):
-            # Ignorar a primeira linha (títulos da tabela)
-            if i == 0:
-                continue
-            
-            # Verificar se a linha tem pelo menos duas colunas
-            if len(row.cells) >= 2:
-                # Obter o valor da segunda coluna
-                cell_value = row.cells[1].text.strip()
-                
-                # Verificar se o valor é "System Message" para ignorá-lo
-                if cell_value == "System Message" or cell_value == "System Message System Message":
-                    continue
-                
-                # Verificar se o valor ainda não foi mapeado e há menos de dois interlocutores
-                if cell_value and cell_value not in interlocutor_map:
-                    if interlocutor_count <= 2:
-                        # Mapear o valor atual para "Interlocutor 1" ou "Interlocutor 2"
-                        interlocutor_map[cell_value] = f"Interlocutor {interlocutor_count}"
-                        interlocutor_count += 1
-
-                # Substituir o valor caso esteja no mapeamento
-                if cell_value in interlocutor_map:
-                    row.cells[1].text = interlocutor_map[cell_value]
-    doc.save(output_path)
-    # Salvar o documento modificado
-    st.write("Anonimização concluída. Documento salvo em:", output_path)
-    
-    
-    # Exibir o mapeamento dos interlocutores
-    st.write("Mapeamento dos Interlocutores:")
-    for original, anonimo in interlocutor_map.items():
-        st.write(f"{anonimo}: {original}")
-        
-from docx import Document
-import streamlit as st
-import re
-
-def anonimizar_interlocutores2(docx_path, output_path):
-    st.write("INICIOU ANONIMIZAÇÃO")
-    
-    # Carregar o documento .docx
-    doc = Document(docx_path)
-    
-    # Armazenar os identificadores principais encontrados para Interlocutor 1 e Interlocutor 2
-    interlocutor_map = {}
-    interlocutor_count = 1  # Contador para nomeação dos interlocutores
-    
-    # Iterar sobre todas as tabelas do documento
-    for table in doc.tables:
-        # Iterar sobre as linhas da tabela, começando da segunda linha
-        for i, row in enumerate(table.rows):
-            # Ignorar a primeira linha (títulos da tabela)
-            if i == 0:
-                continue
-            
-            # Verificar se a linha tem pelo menos três colunas
-            if len(row.cells) >= 3:
-                # Obter os valores da segunda e terceira colunas
-                cell_value_2 = row.cells[1].text.strip()
-                cell_value_3 = row.cells[2].text.strip()
-                
-                # Se a segunda coluna não for "System Message", aplicar substituição total
-                if cell_value_2 != "System Message" and cell_value_2 != "System Message System Message":
-                    # Extrair apenas o identificador principal (por exemplo, número de telefone com domínio)
-                    identifier_match = re.search(r"\b\d{10,}@\w+\.\w+\b", cell_value_2)
-                    if identifier_match:
-                        identifier = identifier_match.group(0)
-                        
-                        # Mapear o identificador se ainda não estiver mapeado
-                        if identifier not in interlocutor_map:
-                            if interlocutor_count <= 2:
-                                interlocutor_map[identifier] = f"Interlocutor {interlocutor_count}"
-                                interlocutor_count += 1
-                        
-                        # Substituição total na segunda coluna
-                        if identifier in interlocutor_map:
-                            row.cells[1].text = interlocutor_map[identifier]
-                
-                # Sempre aplicar a substituição parcial na terceira coluna, independentemente do valor da coluna 2
-                for identifier, anonimo in interlocutor_map.items():
-                    if identifier in cell_value_3:
-                        row.cells[2].text = re.sub(identifier, anonimo, cell_value_3)
-    
-    # Salvar o documento modificado
-    doc.save(output_path)
-    st.write("Anonimização concluída. Documento salvo em:", output_path)
-    
-    # Exibir o mapeamento dos interlocutores
-    st.write("Mapeamento dos Interlocutores:")
-    for original, anonimo in interlocutor_map.items():
-        st.write(f"{anonimo}: {original}")
-
-from docx import Document
-import streamlit as st
-import re
-
-def anonimizar_interlocutores3(docx_path, output_path):
-    st.write("INICIOU ANONIMIZAÇÃO")
-    
-    # Carregar o documento .docx
-    doc = Document(docx_path)
-    
-    # Etapa 1: Mapeamento dos identificadores principais para Interlocutor 1 e Interlocutor 2
-    interlocutor_map = {}
-    interlocutor_count = 1  # Contador para nomeação dos interlocutores
-    
-    # Primeiro, percorremos todas as tabelas para identificar os interlocutores
-    for table in doc.tables:
-        for i, row in enumerate(table.rows):
-            # Ignorar a primeira linha (títulos da tabela)
-            if i == 0:
-                continue
-
-            # Verificar se a linha tem pelo menos duas colunas
-            if len(row.cells) >= 2:
-                cell_value_2 = row.cells[1].text.strip()
-                
-                # Ignorar linhas da segunda coluna com "System Message"
-                if cell_value_2 != "System Message":
-                    # Extrair o identificador principal (exemplo: número de telefone com domínio)
-                    identifier_match = re.search(r"\b\d{10,}@\w+\.\w+\b", cell_value_2)
-                    if identifier_match:
-                        identifier = identifier_match.group(0)
-                        
-                        # Mapear o identificador se ainda não estiver mapeado e temos menos de 2 interlocutores
-                        if identifier not in interlocutor_map and interlocutor_count <= 2:
-                            interlocutor_map[identifier] = f"Interlocutor {interlocutor_count}"
-                            interlocutor_count += 1
-    
-    # Exibir o mapeamento dos interlocutores
-    st.write("Mapeamento dos Interlocutores:")
-    for original, anonimo in interlocutor_map.items():
-        st.write(f"{anonimo}: {original}")
-    
-    # Etapa 2: Substituição dos identificadores no documento
-    for table in doc.tables:
-        for i, row in enumerate(table.rows):
-            # Ignorar a primeira linha (títulos da tabela)
-            if i == 0:
-                continue
-            
-            # Verificar se a linha tem pelo menos duas colunas
-            if len(row.cells) >= 2:
-                # Substituição total na segunda coluna, se não for "System Message"
-                cell_value_2 = row.cells[1].text.strip()
-                if cell_value_2 != "System Message":
-                    for identifier, anonimo in interlocutor_map.items():
-                        if identifier in cell_value_2:
-                            row.cells[1].text = anonimo  # Substituição total
-                
-                # Substituição parcial na terceira coluna
-                if len(row.cells) >= 3:
-                    cell_value_3 = row.cells[2].text.strip()
-                    for identifier, anonimo in interlocutor_map.items():
-                        if identifier in cell_value_3:
-                            # Substituição parcial do identificador no conteúdo da célula
-                            cell_value_3 = re.sub(identifier, anonimo, cell_value_3)
-                    row.cells[2].text = cell_value_3  # Atualizar a célula com o texto modificado
-    
-    # Salvar o documento modificado
-    doc.save(output_path)
-    st.write("Anonimização concluída. Documento salvo em:", output_path)
-
-
 
 def anonimizar_interlocutores4(docx_path, output_path):
     st.write("INICIOU ANONIMIZAÇÃO")
@@ -604,10 +509,6 @@ def anonimizar_interlocutores4(docx_path, output_path):
     doc.save(output_path)
     st.write("Anonimização concluída. Documento salvo em:", output_path)
 
-
-from docx import Document
-import streamlit as st
-import re
 
 def anonimizar_interlocutores5(docx_path, output_path):
     st.write("INICIOU ANONIMIZAÇÃO")
