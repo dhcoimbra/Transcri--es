@@ -49,12 +49,12 @@ if selected == "Conversão Cellebrite":
             progress_bar = st.progress(0)
 
             # Processar o Excel e gerar os documentos de lote
-            documentos_gerados = processar_em_lotes(uploaded_file, audio_folder, progress_bar, is_tag)
+            documentos_gerados = utils.processar_em_lotes(uploaded_file, audio_folder, progress_bar, is_tag)
 
             # Verificar se a pasta contém os arquivos referenciados no Excel
             if verificar_arquivos_na_pasta(uploaded_file, audio_folder):
                 # Unir todos os documentos de lote em um único documento final
-                doc_final_path = recriar_documento_final(documentos_gerados, audio_folder)
+                doc_final_path = utils.recriar_documento_final(documentos_gerados, audio_folder)
 
                 # Exibir link de download para o documento final
                 with open(doc_final_path, "rb") as f:
