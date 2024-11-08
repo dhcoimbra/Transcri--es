@@ -73,7 +73,7 @@ def gerar_hash_arquivo(caminho_arquivo):
 
 
 ###### FUNÇÃO QUE FUNCIONOU
-def criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
+def criar_documento_para_lote5(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
     doc = Document()
     table = doc.add_table(rows=1, cols=4)
     table.autofit = False
@@ -146,7 +146,8 @@ def criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linha
                     row_cells[2].text = "Imagem não encontrada no caminho especificado."
                     """
             else:
-                row_cells[2].text = str(body) if body else "Sem conteúdo"
+                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Sem conteúdo'}"
+                #row_cells[2].text = str(body) if body else "Sem conteúdo"
         else:
             # Conteúdo genérico sem anexo
             print(f"Label: '{label}', is_forwarded: {is_forwarded}")
@@ -163,6 +164,105 @@ def criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linha
     lote_file_path = f"lote_{lote_num}.docx"
     doc.save(lote_file_path)
     return lote_file_path
+
+
+def criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
+    doc = Document()
+    table = doc.add_table(rows=1, cols=4)
+    table.autofit = False
+
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'Item'
+    hdr_cells[1].text = 'From'
+    hdr_cells[2].text = 'Body'
+    hdr_cells[3].text = 'Timestamp-Time'
+    item = 0
+           
+    for index, row in df_lote.iterrows():
+        item += 1
+        from_field = row['From']
+        to_field = row.get('To', '')
+        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', ''))
+        body = row.get('Body', '')
+        attachment = row.get('Attachment #1', None)
+        label = row.get('Label', '')
+
+        # Verificar se "Forwarded" está contido na string "Label", ignorando espaços
+        is_forwarded = "Forwarded" in label.strip()
+        
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(item)
+        row_cells[1].text = from_field
+
+        # Verifica o tipo de conteúdo para "Body" ou anexo
+        if pd.notna(attachment):
+            file_path = os.path.join(audio_dir, attachment)
+            
+            if attachment.endswith('.opus'): 
+                # Se for áudio, adicionar "ENCAMINHADO" no início se for encaminhado
+                if is_forwarded:
+                    row_cells[2].text = "➡️ Encaminhado\n"
+                
+                if os.path.exists(file_path):
+                    hash_arquivo = gerar_hash_arquivo(file_path)
+                    transcricao_existente = buscar_transcricao(hash_arquivo)
+                    
+                    if transcricao_existente:
+                        row_cells[2].text += f"🔉 Áudio\nTranscrição: {transcricao_existente}"
+                    else:
+                        audio_url = upload_audio(file_path)
+                        if audio_url:
+                            transcription = transcrever_audio_assemblyai(audio_url)
+                            if transcription:
+                                row_cells[2].text += f"🔉 Áudio\nTranscrição: '{transcription}'"
+                                salvar_transcricao(hash_arquivo, transcription, from_field, to_field, timestamp)
+                            else:
+                                row_cells[2].text += "Falha ao transcrever o áudio."
+                        else:
+                            row_cells[2].text += "Falha ao enviar o áudio."
+                else:
+                    row_cells[2].text += "Áudio deletado"
+            
+            elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                if is_forwarded:
+                    row_cells[2].text = f"📸 Imagem Encaminhada: {attachment}"
+                else:    
+                    row_cells[2].text = f"📸 Imagem: {attachment}"
+                """if os.path.exists(file_path):
+                    try:
+                        paragraph = row_cells[2].paragraphs[0]
+                        run = paragraph.add_run()
+                        run.add_picture(file_path, width=Cm(7))
+                    except Exception as e:
+                        row_cells[2].text = f"Erro ao inserir imagem: {e}"
+                else:
+                    row_cells[2].text = "Imagem não encontrada no caminho especificado."
+                    """
+            elif attachment.lower().endswith(('.pdf', '.docx', '.xlsx')):
+                # Caso seja um documento (PDF, DOCX, XLSX, etc.)
+                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}📁 Arquivo: \"{attachment}\""
+            
+            else:
+                # Para outros tipos de anexo, trata-se como conteúdo padrão
+                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Sem conteúdo'}"
+                
+        else:
+            # Conteúdo genérico sem anexo
+            print(f"Label: '{label}', is_forwarded: {is_forwarded}")
+            row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Sem conteúdo'}"
+
+        # Atualiza a barra de progresso e define o timestamp
+        linhas_processadas += 1
+        progresso = linhas_processadas / total_linhas
+        progress_bar.progress(progresso)
+
+        row_cells[3].text = str(timestamp)
+
+    # Salva o arquivo do lote
+    lote_file_path = f"lote_{lote_num}.docx"
+    doc.save(lote_file_path)
+    return lote_file_path
+
 
 
 def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
@@ -218,9 +318,9 @@ def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_tra
                 item = item + 1
                 new_row = new_table.add_row().cells
                 for i, cell in enumerate(row.cells):
-                    if i == 2 and cell.text.startswith("IMAGEM:"):
+                    if i == 2 and cell.text.startswith("📸 Imagem:"):
                         # Extrair o nome do arquivo de imagem
-                        attachment_name = cell.text.replace("IMAGEM:", "").strip()
+                        attachment_name = cell.text.replace("📸 Imagem:", "").strip()
                         image_path = os.path.join(audio_dir, attachment_name)
 
                         # Inserir a imagem se o caminho existir
@@ -235,11 +335,11 @@ def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_tra
                             new_row[i].text = f"Imagem '{attachment_name}' não encontrada no caminho especificado."
                     #else:
                     #    new_row[i].text = cell.text
-                    elif i == 2 and cell.text.startswith("IMAGEM ENCAMINHADA:"):
+                    elif i == 2 and cell.text.startswith("📸 Imagem Encaminhada:"):
                         # Extrair o nome do arquivo de imagem
-                        attachment_name = cell.text.replace("IMAGEM ENCAMINHADA:", "").strip()
+                        attachment_name = cell.text.replace("📸 Imagem Encaminhada:", "").strip()
                         image_path = os.path.join(audio_dir, attachment_name)
-                        new_row[i].text += "➡️ Imagem Encaminhada:\n\n"
+                        new_row[i].text += "➡️ Encaminhada\n 📸 Imagem:\n\n"
                         # Inserir a imagem se o caminho existir
                         if os.path.exists(image_path):
                             try:
