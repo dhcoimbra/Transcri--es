@@ -56,11 +56,13 @@ def verificar_arquivos_na_pasta(file, audio_dir):
 
     # Iterar pelas linhas e verificar se pelo menos um arquivo existe na pasta
     for index, row in df.iterrows():
-        attachment = row.get('Attachment #1', None)
+        attachment = row.get('Attachment #1', row.get('Anexo #1', None))
         if pd.notna(attachment):
             file_path = os.path.join(audio_dir, attachment)
             if os.path.exists(file_path):
                 return True  # Arquivo encontrado, a pasta está correta
+        else:
+            return True #retorna True poruqe não tem nenhum arquivo anexo na planilha
     return False  # Nenhum arquivo encontrado, a pasta está incorreta
 
 def gerar_hash_arquivo(caminho_arquivo):
@@ -87,15 +89,15 @@ def criar_documento_para_lote5(df_lote, audio_dir, lote_num, progress_bar, linha
            
     for index, row in df_lote.iterrows():
         item += 1
-        from_field = row['From']
-        to_field = row.get('To', '')
-        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', ''))
-        body = row.get('Body', '')
-        attachment = row.get('Attachment #1', None)
-        label = row.get('Label', '')
+        from_field = row.get('From', row.get('De', ''))
+        to_field = row.get('To', row.get('Para', ''))
+        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', row.get('Marcação de tempo-Hora', '')))
+        body = row.get('Body', row.get('Corpo', ''))
+        attachment = row.get('Attachment #1', row.get('Anexo #1', None))
+        label = row.get('Label', row.get('Rótulo', ''))
 
         # Verificar se "Forwarded" está contido na string "Label", ignorando espaços
-        is_forwarded = "Forwarded" in label.strip()
+        is_forwarded = "Forwarded" in label.strip() or "Encaminhado" in label.strip()
         
         row_cells = table.add_row().cells
         row_cells[0].text = str(item)
@@ -146,6 +148,7 @@ def criar_documento_para_lote5(df_lote, audio_dir, lote_num, progress_bar, linha
                     row_cells[2].text = "Imagem não encontrada no caminho especificado."
                     """
             else:
+                
                 row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Sem conteúdo'}"
                 #row_cells[2].text = str(body) if body else "Sem conteúdo"
         else:
@@ -180,15 +183,15 @@ def criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linha
            
     for index, row in df_lote.iterrows():
         item += 1
-        from_field = row['From']
-        to_field = row.get('To', '')
-        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', ''))
-        body = row.get('Body', '')
-        attachment = row.get('Attachment #1', None)
-        label = row.get('Label', '')
+        from_field = row.get('From', row.get('De', ''))
+        to_field = row.get('To', row.get('Para', ''))
+        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', row.get('Marcação de tempo-Hora', '')))
+        body = row.get('Body', row.get('Corpo', ''))
+        attachment = row.get('Attachment #1', row.get('Anexo #1', None))
+        label = row.get('Label', row.get('Rótulo', ''))
 
         # Verificar se "Forwarded" está contido na string "Label", ignorando espaços
-        is_forwarded = "Forwarded" in label.strip()
+        is_forwarded = "Forwarded" in label.strip() or "Encaminhado" in label.strip()
         
         row_cells = table.add_row().cells
         row_cells[0].text = str(item)
@@ -244,7 +247,7 @@ def criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linha
             
             else:
                 # Para outros tipos de anexo, trata-se como conteúdo padrão
-                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Sem conteúdo'}"
+                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'ARQUIVO DELETADO'}"
                 
         else:
             # Conteúdo genérico sem anexo
@@ -271,6 +274,7 @@ def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
     # Aplicar o filtro na coluna "Tag" se necessário
     if filtro_tag:
         df = df[df['Tag'].notna()]  # Filtra apenas linhas onde "Tag" não está vazia
+        df = df[df['Nota da etiqueta'].notna()]
     #print(filtro_tag)
 
     df = df.fillna('')

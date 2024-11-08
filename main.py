@@ -31,6 +31,7 @@ if selected == "Conversão Cellebrite":
 
     # Solicitar ao usuário que insira o caminho completo da pasta de áudios e imagens
     audio_folder = st.text_input("Digite o caminho completo da pasta onde os áudios e imagens estão localizados:")
+    is_folder = st.checkbox("Conversa sem anexos.")
 
     # Upload do arquivo Excel
     uploaded_file = st.file_uploader("Faça o upload do arquivo Excel", type=["xlsx"])
@@ -42,7 +43,7 @@ if selected == "Conversão Cellebrite":
     # Botão para iniciar a transcrição
     if st.button("Iniciar transcrição"):
         # Garantir que ambos, arquivo Excel e pasta de áudio/imagem, estão disponíveis
-        if uploaded_file is not None and audio_folder:
+        if uploaded_file is not None and (audio_folder or is_folder is True):
             st.write(f"Arquivo Excel e pasta de áudios/imagens carregados com sucesso!")
 
             # Barra de progresso para o processo completo
@@ -75,9 +76,9 @@ if selected == "Conversão Cellebrite":
             else:
                 st.warning("A pasta fornecida não contém os arquivos de mídia mencionados no arquivo Excel.")
             
-            
+          
         else:
-            st.warning("Por favor, faça o upload do arquivo Excel e insira o caminho dos áudios.")
+            st.warning("Por favor, faça o upload do arquivo Excel e insira o caminho dos áudios ou marque a opção sem anexo.")
     if "doc_final_path" in st.session_state and st.button("Gerar anonimização"):
         
         anonimizado_path = os.path.join(os.getcwd(), "Anonimizado.docx")  # Cria um caminho absoluto para salvar o documento anonimizado
