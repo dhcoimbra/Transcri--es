@@ -14,6 +14,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import hashlib
 import re
 from PIL import Image, ImageOps
+import cv2
 
 from tempfile import NamedTemporaryFile
 
@@ -73,7 +74,6 @@ def gerar_hash_arquivo(caminho_arquivo):
             hash_sha256.update(bloco)
     return hash_sha256.hexdigest()
 
-
 def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
     doc = Document()
     table = doc.add_table(rows=1, cols=4)
@@ -94,23 +94,38 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
         body = row.get('Body', row.get('Corpo', ''))
         attachment = row.get('Attachment #1', row.get('Anexo #1', None))
         label = row.get('Label', row.get('Rótulo', ''))
+        deleted = row.get('Deleted', row.get('Excluído', row.get('Deleted - Instant Message', '')))
+        location = row.get('Location', '')  # Verifica a coluna "Location"
 
-        # Verificar se "Forwarded" está contido na string "Label", ignorando espaços
+        # Verifica se a mensagem foi encaminhada
         is_forwarded = "Forwarded" in label.strip() or "Encaminhado" in label.strip()
+        
+        # Verifica se a mensagem foi marcada como excluída
+        is_deleted = isinstance(deleted, str) and deleted.strip()
+
+        # Verifica se existe uma localização
+        has_location = isinstance(location, str) and location.strip()
         
         row_cells = table.add_row().cells
         row_cells[0].text = str(item)
         row_cells[1].text = from_field
 
+        # Inicializa o conteúdo de "Body" com os rótulos apropriados
+        message_label = ""
+        if is_forwarded:
+            message_label += "➡️ Encaminhado\n"
+        if is_deleted:
+            message_label += "❌ Mensagem Excluída\n"
+        if has_location:
+            message_label += f"📍 Localização: {location.strip()}\n"  # Adiciona o rótulo de Localização
+            print("\nattachment attachment attachment: ",attachment)
+            print("ITEM: ",item)
         # Verifica o tipo de conteúdo para "Body" ou anexo
         if pd.notna(attachment):
             file_path = os.path.join(audio_dir, attachment)
             
-            if attachment.endswith('.opus'): 
-                # Se for áudio, adicionar "ENCAMINHADO" no início se for encaminhado
-                if is_forwarded:
-                    row_cells[2].text = "➡️ Encaminhado\n"
-                
+            if attachment.endswith('.opus'):
+                row_cells[2].text = message_label
                 if os.path.exists(file_path):
                     hash_arquivo = gerar_hash_arquivo(file_path)
                     transcricao_existente = buscar_transcricao(hash_arquivo)
@@ -131,33 +146,24 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
                 else:
                     row_cells[2].text += "Áudio deletado"
             
-            elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                if is_forwarded:
-                    row_cells[2].text = f"📸 Imagem Encaminhada: {attachment}"
-                else:    
-                    row_cells[2].text = f"📸 Imagem: {attachment}"
-                """if os.path.exists(file_path):
-                    try:
-                        paragraph = row_cells[2].paragraphs[0]
-                        run = paragraph.add_run()
-                        run.add_picture(file_path, width=Cm(7))
-                    except Exception as e:
-                        row_cells[2].text = f"Erro ao inserir imagem: {e}"
-                else:
-                    row_cells[2].text = "Imagem não encontrada no caminho especificado."
-                    """
+            elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic')):
+                row_cells[2].text = f"{message_label}📸 Imagem: {attachment}"
+            
             elif attachment.lower().endswith(('.pdf', '.docx', '.xlsx')):
-                # Caso seja um documento (PDF, DOCX, XLSX, etc.)
-                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}📁 Arquivo: \"{attachment}\""
+                row_cells[2].text = f"{message_label}📁 Arquivo: \"{attachment}\""
+                
+            elif attachment.lower().endswith(('.mp4')):
+                row_cells[2].text = f"{message_label}📽️ Vídeo: {attachment}"
+                
+            elif attachment.lower().endswith(('.thumb')):
+                row_cells[2].text = f"{message_label}📁 Arquivo: {attachment}"
             
             else:
-                # Para outros tipos de anexo, trata-se como conteúdo padrão
-                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Arquivo não recuperado!'}"
+                row_cells[2].text = f"{message_label}{str(body) if body else 'Arquivo não recuperado!'}"
                 
         else:
             # Conteúdo genérico sem anexo
-            print(f"Label: '{label}', is_forwarded: {is_forwarded}")
-            row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Sem conteúdo'}"
+            row_cells[2].text = f"{message_label}{str(body) if body else 'Sem conteúdo'}"
 
         # Atualiza a barra de progresso e define o timestamp
         linhas_processadas += 1
@@ -172,14 +178,112 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
     return lote_file_path
 
 
+### Essa é a função original que funciona
+def criar_documento_para_lote_FUNCIONANDO(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
+    doc = Document()
+    table = doc.add_table(rows=1, cols=4)
+    table.autofit = False
+
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'Item'
+    hdr_cells[1].text = 'From'
+    hdr_cells[2].text = 'Body'
+    hdr_cells[3].text = 'Timestamp-Time'
+    item = 0
+           
+    for index, row in df_lote.iterrows():
+        item += 1
+        from_field = row.get('From', row.get('De', ''))
+        to_field = row.get('To', row.get('Para', ''))
+        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', row.get('Marcação de tempo-Hora', '')))
+        body = row.get('Body', row.get('Corpo', ''))
+        attachment = row.get('Attachment #1', row.get('Anexo #1', None))
+        label = row.get('Label', row.get('Rótulo', ''))
+        deleted = row.get('Deleted', row.get('Excluído', row.get('Deleted - Instant Message', '')))
+
+        # Verifica se a mensagem foi encaminhada
+        is_forwarded = "Forwarded" in label.strip() or "Encaminhado" in label.strip()
+        
+        # Verifica se a mensagem foi marcada como excluída
+        is_deleted = isinstance(deleted, str) and deleted.strip()
+        
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(item)
+        row_cells[1].text = from_field
+
+        # Inicializa o conteúdo de "Body" com os rótulos apropriados
+        message_label = ""
+        if is_forwarded:
+            message_label += "➡️ Encaminhado\n"
+        if is_deleted:
+            message_label += "❌ Mensagem Excluída\n"
+
+        # Verifica o tipo de conteúdo para "Body" ou anexo
+        if pd.notna(attachment):
+            file_path = os.path.join(audio_dir, attachment)
+            
+            if attachment.endswith('.opus'):
+                row_cells[2].text = message_label
+                if os.path.exists(file_path):
+                    hash_arquivo = gerar_hash_arquivo(file_path)
+                    transcricao_existente = buscar_transcricao(hash_arquivo)
+                    
+                    if transcricao_existente:
+                        row_cells[2].text += f"🔉 Áudio\nTranscrição: {transcricao_existente}"
+                    else:
+                        audio_url = upload_audio(file_path)
+                        if audio_url:
+                            transcription = transcrever_audio_assemblyai(audio_url)
+                            if transcription:
+                                row_cells[2].text += f"🔉 Áudio\nTranscrição: '{transcription}'"
+                                salvar_transcricao(hash_arquivo, transcription, from_field, to_field, timestamp)
+                            else:
+                                row_cells[2].text += "Falha ao transcrever o áudio."
+                        else:
+                            row_cells[2].text += "Falha ao enviar o áudio."
+                else:
+                    row_cells[2].text += "Áudio deletado"
+            
+            elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic')):
+                row_cells[2].text = f"{message_label}📸 Imagem: {attachment}"
+            
+            elif attachment.lower().endswith(('.pdf', '.docx', '.xlsx')):
+                row_cells[2].text = f"{message_label}📁 Arquivo: \"{attachment}\""
+                
+            elif attachment.lower().endswith(('.mp4')):
+                row_cells[2].text = f"{message_label}📽️ Vídeo: {attachment}"
+            
+            else:
+                row_cells[2].text = f"{message_label}{str(body) if body else 'Arquivo não recuperado!'}"
+                
+        else:
+            # Conteúdo genérico sem anexo
+            row_cells[2].text = f"{message_label}{str(body) if body else 'Sem conteúdo'}"
+
+        # Atualiza a barra de progresso e define o timestamp
+        linhas_processadas += 1
+        progresso = linhas_processadas / total_linhas
+        progress_bar.progress(progresso)
+
+        row_cells[3].text = str(timestamp)
+
+    # Salva o arquivo do lote
+    lote_file_path = f"lote_{lote_num}.docx"
+    doc.save(lote_file_path)
+    return lote_file_path
+
 
 def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
     df = pd.read_excel(file, engine='openpyxl', header=1).dropna(how='all')
 
     # Aplicar o filtro na coluna "Tag" se necessário
     if filtro_tag:
-        df = df[df['Tag'].notna()]  # Filtra apenas linhas onde "Tag" não está vazia
-        df = df[df['Nota da etiqueta'].notna()]
+        if df['Tag']:
+            df = df[df['Tag'].notna()]
+        elif df['Tag Note - Instant Message']:
+            df = df[df['Tag Note - Instant Message'].notna()]  # Filtra apenas linhas onde "Tag" não está vazia
+        else:
+            df = df[df['Nota da etiqueta'].notna()]
     #print(filtro_tag)
 
     df = df.fillna('')
@@ -202,9 +306,22 @@ def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
         
     return documentos_gerados
 
-# Função para recriar o conteúdo de cada lote no documento final, incluindo as imagens
 
-def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_transcricoes_final.docx"):
+def capturar_frame(video_path, output_path, frame_number=10):
+    """Captura um frame específico de um vídeo e salva como uma imagem .jpeg."""
+    try:
+        vidcap = cv2.VideoCapture(video_path)
+        vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)  # Define o frame específico
+        success, frame = vidcap.read()
+        if success:
+            cv2.imwrite(output_path, frame)  # Salva o frame específico como imagem
+        vidcap.release()
+        return success
+    except Exception as e:
+        print(f"Erro ao capturar o frame {frame_number} do vídeo {video_path}: {e}")
+        return False
+
+def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_transcricoes_final.docx", frame_number=10):
     doc_final = Document()
 
     for idx, doc_path in enumerate(documentos):
@@ -215,64 +332,113 @@ def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_tra
             new_table.autofit = False
 
             # Recriar cabeçalho
-            hdr_cells = table.rows[0].cells
+            hdr_cells = new_table.rows[0].cells
             hdr_cells[0].text = 'Item'
             hdr_cells[1].text = 'From'
             hdr_cells[2].text = 'Body'
             hdr_cells[3].text = 'Timestamp-Time'
             item = 0
-            
 
             for row in table.rows[1:]:  # Ignorar cabeçalho
-                item = item + 1
+                item += 1
                 new_row = new_table.add_row().cells
                 for i, cell in enumerate(row.cells):
-                    if i == 2 and cell.text.startswith("📸 Imagem:"):
-                        # Extrair o nome do arquivo de imagem
-                        attachment_name = cell.text.replace("📸 Imagem:", "").strip()
-                        image_path = os.path.join(audio_dir, attachment_name)
+                    cell_text = cell.text.strip()
 
-                        # Inserir a imagem se o caminho existir
-                        if os.path.exists(image_path):
-                            try:
-                                paragraph = new_row[i].paragraphs[0]
-                                run = paragraph.add_run()
-                                run.add_picture(image_path, width=Cm(7))
-                            except Exception as e:
-                                new_row[i].text = f"Erro ao inserir imagem: {e}"
-                        else:
-                            new_row[i].text = f"Imagem '{attachment_name}' não encontrada no caminho especificado."
-                    #else:
-                    #    new_row[i].text = cell.text
-                    elif i == 2 and cell.text.startswith("📸 Imagem Encaminhada:"):
-                        # Extrair o nome do arquivo de imagem
-                        attachment_name = cell.text.replace("📸 Imagem Encaminhada:", "").strip()
-                        image_path = os.path.join(audio_dir, attachment_name)
-                        new_row[i].text += "➡️ Encaminhada\n 📸 Imagem:\n\n"
-                        # Inserir a imagem se o caminho existir
-                        if os.path.exists(image_path):
-                            try:
-                                paragraph = new_row[i].paragraphs[0]
-                                run = paragraph.add_run()
-                                #run.add_text("Imagem Encaminhada:\n\n")
-                                run.add_picture(image_path, width=Cm(7))
-                            except Exception as e:
-                                new_row[i].text = f"Erro ao inserir imagem: {e}"
-                        else:
-                            new_row[i].text = f"Imagem '{attachment_name}' não encontrada no caminho especificado."
+                    # Verifica se a célula contém uma imagem ou vídeo e extrai o nome do arquivo
+                    if i == 2 and ("📸 Imagem:" in cell_text or "📽️ Vídeo:" in cell_text):
+                        forwarded = "➡️ Encaminhado" in cell_text
+                        deleted = "❌ Mensagem Excluída" in cell_text
+
+                        # Remove rótulos antes de buscar o nome do anexo
+                        clean_text = cell_text.replace("➡️ Encaminhado\n", "").replace("❌ Mensagem Excluída\n", "").strip()
+                        attachment_name = clean_text.replace("📸 Imagem:", "").replace("📽️ Vídeo:", "").strip()
+                        file_path = os.path.join(audio_dir, attachment_name)
+
+                        # Configura o rótulo inicial para o texto
+                        label_text = ""
+                        if forwarded:
+                            label_text += "➡️ Encaminhada\n"
+                        if deleted:
+                            label_text += "❌ Mensagem Excluída\n"
+
+                        # Verifica a extensão do arquivo
+                        _, ext = os.path.splitext(attachment_name)
+                        ext = ext.lower()
+
+                        # Tratamento específico para vídeos .mp4
+                        if ext == '.mp4':
+                            # Adiciona "📽️ Vídeo" seguido do nome do arquivo
+                            label_text += f"📽️ Vídeo: {attachment_name}\n"
+                            new_row[i].text = label_text
+
+                            # Captura o frame especificado do vídeo
+                            temp_image_path = file_path.replace(ext, "_frame.jpeg")
+                            if capturar_frame(file_path, temp_image_path, frame_number=frame_number):
+                                # Insere o frame capturado
+                                if os.path.exists(temp_image_path):
+                                    try:
+                                        paragraph = new_row[i].paragraphs[0]
+                                        run = paragraph.add_run()
+                                        run.add_picture(temp_image_path, width=Cm(5))  # Tamanho menor para prévia do vídeo
+                                    except Exception as e:
+                                        new_row[i].text += f"Erro ao inserir prévia do vídeo: {e}"
+                                    finally:
+                                        os.remove(temp_image_path)  # Remove a imagem temporária
+                            else:
+                                new_row[i].text += "Erro ao capturar o frame especificado do vídeo."
+
+                        # Tratamento para outras imagens
+                        elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic']:
+                            if ext == '.webp':
+                                label_text += f"Sticker: {attachment_name}\n"  # Adiciona "Sticker" seguido do nome do arquivo
+                                image_size = Cm(3)  # Tamanho menor para stickers
+                            else:
+                                label_text += f"📸 Imagem: {attachment_name}\n"  # Adiciona "📸 Imagem" seguido do nome do arquivo
+                                image_size = Cm(7)  # Tamanho padrão para outras imagens
+                            new_row[i].text = label_text
+
+                            # Converte .webp e .heic para .jpeg, se necessário
+                            if ext in ['.webp', '.heic']:
+                                try:
+                                    with Image.open(file_path) as img:
+                                        img = img.convert("RGB")
+                                        temp_image_path = file_path.replace(ext, ".jpeg")
+                                        img.save(temp_image_path, format="JPEG")
+                                    file_path = temp_image_path
+                                except Exception as e:
+                                    new_row[i].text += f"Erro ao processar imagem {ext}: {e}"
+                                    continue
+
+                            # Insere a imagem com o tamanho especificado
+                            if os.path.exists(file_path):
+                                try:
+                                    paragraph = new_row[i].paragraphs[0]
+                                    run = paragraph.add_run()
+                                    run.add_picture(file_path, width=image_size)
+                                except Exception as e:
+                                    new_row[i].text += f"Erro ao inserir imagem: {e}"
+                            else:
+                                new_row[i].text += f"Imagem '{attachment_name}' não encontrada no caminho especificado."
+
+                            # Remove o arquivo temporário se tiver sido criado
+                            if ext in ['.webp', '.heic'] and os.path.exists(file_path):
+                                os.remove(file_path)
+
                     else:
+                        # Para outras células, transfere o texto como está
                         new_row[i].text = cell.text
 
             # Adicionar quebra de página entre lotes
             if idx < len(documentos) - 1:
                 doc_final.add_page_break()
 
-
+    # Salva o documento final
     doc_final.save(doc_final_path)
-
     formatar_tabela_documento(doc_final_path)
 
     return doc_final_path
+
 
 def formatar_tabela_documento(doc_path):
     doc = Document(doc_path)
