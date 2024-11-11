@@ -82,7 +82,7 @@ if selected == "Conversão Cellebrite":
     if "doc_final_path" in st.session_state and st.button("Gerar anonimização"):
         
         anonimizado_path = os.path.join(os.getcwd(), "Anonimizado.docx")  # Cria um caminho absoluto para salvar o documento anonimizado
-        utils.anonimizar_interlocutores5(st.session_state['doc_final_path'], anonimizado_path)
+        utils.anonimizar_interlocutores(st.session_state['doc_final_path'], anonimizado_path)
 
         # Exibir link de download para o documento anonimizado
         with open(anonimizado_path, "rb") as f:

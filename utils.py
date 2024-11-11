@@ -74,102 +74,7 @@ def gerar_hash_arquivo(caminho_arquivo):
     return hash_sha256.hexdigest()
 
 
-###### FUNÇÃO QUE FUNCIONOU
-def criar_documento_para_lote5(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
-    doc = Document()
-    table = doc.add_table(rows=1, cols=4)
-    table.autofit = False
-
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'Item'
-    hdr_cells[1].text = 'From'
-    hdr_cells[2].text = 'Body'
-    hdr_cells[3].text = 'Timestamp-Time'
-    item = 0
-           
-    for index, row in df_lote.iterrows():
-        item += 1
-        from_field = row.get('From', row.get('De', ''))
-        to_field = row.get('To', row.get('Para', ''))
-        timestamp = row.get('Timestamp-Time', row.get('Timestamp: Time', row.get('Marcação de tempo-Hora', '')))
-        body = row.get('Body', row.get('Corpo', ''))
-        attachment = row.get('Attachment #1', row.get('Anexo #1', None))
-        label = row.get('Label', row.get('Rótulo', ''))
-
-        # Verificar se "Forwarded" está contido na string "Label", ignorando espaços
-        is_forwarded = "Forwarded" in label.strip() or "Encaminhado" in label.strip()
-        
-        row_cells = table.add_row().cells
-        row_cells[0].text = str(item)
-        row_cells[1].text = from_field
-
-        # Verifica o tipo de conteúdo para "Body" ou anexo
-        if pd.notna(attachment):
-            file_path = os.path.join(audio_dir, attachment)
-            
-            if attachment.endswith('.opus'): 
-                # Se for áudio, adicionar "ENCAMINHADO" no início se for encaminhado
-                if is_forwarded:
-                    row_cells[2].text = "➡️ Encaminhado\n"
-                
-                if os.path.exists(file_path):
-                    hash_arquivo = gerar_hash_arquivo(file_path)
-                    transcricao_existente = buscar_transcricao(hash_arquivo)
-                    
-                    if transcricao_existente:
-                        row_cells[2].text += f"ÁUDIO\nTranscrição: {transcricao_existente}"
-                    else:
-                        audio_url = upload_audio(file_path)
-                        if audio_url:
-                            transcription = transcrever_audio_assemblyai(audio_url)
-                            if transcription:
-                                row_cells[2].text += f"ÁUDIO\nTranscrição: '{transcription}'"
-                                salvar_transcricao(hash_arquivo, transcription, from_field, to_field, timestamp)
-                            else:
-                                row_cells[2].text += "Falha ao transcrever o áudio."
-                        else:
-                            row_cells[2].text += "Falha ao enviar o áudio."
-                else:
-                    row_cells[2].text += "Áudio deletado"
-            
-            elif attachment.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                if is_forwarded:
-                    row_cells[2].text = f"IMAGEM ENCAMINHADA: {attachment}"
-                else:    
-                    row_cells[2].text = f"IMAGEM: {attachment}"
-                """if os.path.exists(file_path):
-                    try:
-                        paragraph = row_cells[2].paragraphs[0]
-                        run = paragraph.add_run()
-                        run.add_picture(file_path, width=Cm(7))
-                    except Exception as e:
-                        row_cells[2].text = f"Erro ao inserir imagem: {e}"
-                else:
-                    row_cells[2].text = "Imagem não encontrada no caminho especificado."
-                    """
-            else:
-                
-                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Sem conteúdo'}"
-                #row_cells[2].text = str(body) if body else "Sem conteúdo"
-        else:
-            # Conteúdo genérico sem anexo
-            print(f"Label: '{label}', is_forwarded: {is_forwarded}")
-            row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Sem conteúdo'}"
-
-        # Atualiza a barra de progresso e define o timestamp
-        linhas_processadas += 1
-        progresso = linhas_processadas / total_linhas
-        progress_bar.progress(progresso)
-
-        row_cells[3].text = str(timestamp)
-
-    # Salva o arquivo do lote
-    lote_file_path = f"lote_{lote_num}.docx"
-    doc.save(lote_file_path)
-    return lote_file_path
-
-
-def criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
+def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas):
     doc = Document()
     table = doc.add_table(rows=1, cols=4)
     table.autofit = False
@@ -247,7 +152,7 @@ def criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linha
             
             else:
                 # Para outros tipos de anexo, trata-se como conteúdo padrão
-                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'ARQUIVO DELETADO'}"
+                row_cells[2].text = f"{'➡️ Encaminhado\n' if is_forwarded else ''}{str(body) if body else 'Arquivo não recuperado!'}"
                 
         else:
             # Conteúdo genérico sem anexo
@@ -289,7 +194,7 @@ def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
     #progresso = 0
 
     for lote_num, df_lote in enumerate(lotes, start=1):
-        lote_file = criar_documento_para_lote4(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas)
+        lote_file = criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas_processadas, total_linhas)
         documentos_gerados.append(lote_file)
         #progresso += 1
 
@@ -486,82 +391,7 @@ def ajustar_largura_celula(cell, largura):
     tcPr.append(cell_width)
     
 
-def anonimizar_interlocutores4(docx_path, output_path):
-    st.write("INICIOU ANONIMIZAÇÃO")
-    
-    # Carregar o documento .docx
-    doc = Document(docx_path)
-    
-    # Etapa 1: Mapeamento dos identificadores principais para Interlocutor 1 e Interlocutor 2
-    interlocutor_map = {}
-    interlocutor_count = 1  # Contador para nomeação dos interlocutores
-    
-    # Primeiro, percorremos todas as tabelas para identificar os interlocutores
-    for table in doc.tables:
-        for i, row in enumerate(table.rows):
-            # Ignorar a primeira linha (títulos da tabela)
-            if i == 0:
-                continue
-
-            # Verificar se a linha tem pelo menos duas colunas
-            if len(row.cells) >= 2:
-                cell_value_2 = row.cells[1].text.strip()
-                
-                # Ignorar linhas da segunda coluna com "System Message"
-                if cell_value_2 != "System Message" and cell_value_2 != "System Message System Message":
-                    # Extrair o identificador principal (exemplo: número de telefone com domínio)
-                    identifier_match = re.search(r"\b\d{10,}@\w+\.\w+\b", cell_value_2)
-                    if identifier_match:
-                        identifier = identifier_match.group(0)
-                        
-                        # Mapear o identificador se ainda não estiver mapeado e temos menos de 2 interlocutores
-                        if identifier not in interlocutor_map and interlocutor_count <= 2:
-                            interlocutor_map[identifier] = f"Interlocutor {interlocutor_count}"
-                            interlocutor_count += 1
-    
-    # Exibir o mapeamento dos interlocutores
-    st.write("Mapeamento dos Interlocutores:")
-    for original, anonimo in interlocutor_map.items():
-        st.write(f"{anonimo}: {original}")
-    
-    # Etapa 2: Substituição dos identificadores no documento
-    for table in doc.tables:
-        for i, row in enumerate(table.rows):
-            # Ignorar a primeira linha (títulos da tabela)
-            if i == 0:
-                continue
-            
-            # Verificar se a linha tem pelo menos duas colunas
-            if len(row.cells) >= 2:
-                # Substituição total na segunda coluna, se não for "System Message"
-                cell_value_2 = row.cells[1].text.strip()
-                if cell_value_2 != "System Message" and cell_value_2 != "System Message System Message":
-                    for identifier, anonimo in interlocutor_map.items():
-                        if identifier in cell_value_2:
-                            # Redefinir o texto da célula completamente para o nome do interlocutor
-                            row.cells[1].text = anonimo  # Substituição total e direta
-                
-                # Verificação para ignorar células com imagens na terceira coluna
-                if len(row.cells) >= 3:
-                    cell = row.cells[2]
-                    has_image = any([shape for shape in cell._element.xpath('.//w:drawing')])
-                    
-                    if not has_image:  # Apenas modificar se não houver imagem
-                        for paragraph in cell.paragraphs:
-                            cell_text = paragraph.text
-                            # Realizar substituição no texto do parágrafo com regex para capturar trechos extras
-                            for identifier, anonimo in interlocutor_map.items():
-                                # Substituir qualquer ocorrência do identificador seguido por caracteres adicionais
-                                cell_text = re.sub(rf"\b{re.escape(identifier)}\b(?:\.\w+)?", anonimo, cell_text)
-                            # Atualizar o texto do parágrafo
-                            paragraph.text = cell_text
-    
-    # Salvar o documento modificado
-    doc.save(output_path)
-    st.write("Anonimização concluída. Documento salvo em:", output_path)
-
-
-def anonimizar_interlocutores5(docx_path, output_path):
+def anonimizar_interlocutores(docx_path, output_path):
     st.write("INICIOU ANONIMIZAÇÃO")
     
     # Carregar o documento .docx
