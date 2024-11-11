@@ -118,8 +118,8 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
             message_label += "❌ Mensagem Excluída\n"
         if has_location:
             message_label += f"📍 Localização: {location.strip()}\n"  # Adiciona o rótulo de Localização
-            print("\nattachment attachment attachment: ",attachment)
-            print("ITEM: ",item)
+            #print("\nattachment attachment attachment: ",attachment)
+            #print("ITEM: ",item)
         # Verifica o tipo de conteúdo para "Body" ou anexo
         if pd.notna(attachment):
             file_path = os.path.join(audio_dir, attachment)
@@ -157,7 +157,9 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
                 
             elif attachment.lower().endswith(('.thumb')):
                 row_cells[2].text = f"{message_label}📁 Arquivo: {attachment}"
-            
+            elif "Shared" in attachment.strip():
+                attachment2 = re.sub(r'(_x000d_|[\r\n])', '\n', attachment).strip()
+                row_cells[2].text = f"{message_label}🪪 Contato: {attachment2}"
             else:
                 row_cells[2].text = f"{message_label}{str(body) if body else 'Arquivo não recuperado!'}"
                 
