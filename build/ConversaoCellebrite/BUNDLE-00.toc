@@ -1,0 +1,3 @@
+([('ConversaoCellebrite',
+   '/Users/coimbra/Documents/GitHub/Transcri--es/dist/ConversaoCellebrite',
+   'EXECUTABLE')],)
