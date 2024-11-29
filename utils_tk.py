@@ -25,7 +25,7 @@ def redimensionar_imagem(image_path, max_width=7):
         aspect_ratio = height / width
         new_width = min(width, max_width * 37.7953)  # Conversão para pixels (1 cm ≈ 37.7953 pixels)
         new_height = int(new_width * aspect_ratio)
-        img = img.resize((int(nesw_width), new_height), Image.LANCZOS)
+        img = img.resize((int(new_width), new_height), Image.LANCZOS)
         # Salvar a imagem temporária redimensionada
         temp_path = f"{image_path}_temp_resized.jpg"
         img.save(temp_path, format="JPEG", quality=85)

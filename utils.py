@@ -118,8 +118,7 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
             message_label += "❌ Mensagem Excluída\n"
         if has_location:
             message_label += f"📍 Localização: {location.strip()}\n"  # Adiciona o rótulo de Localização
-            #print("\nattachment attachment attachment: ",attachment)
-            #print("ITEM: ",item)
+            
         # Verifica o tipo de conteúdo para "Body" ou anexo
         if pd.notna(attachment):
             file_path = os.path.join(audio_dir, attachment)

@@ -42,27 +42,6 @@ class App:
         self.dest_button = tk.Button(self.main_tab, text="Selecionar", command=self.select_dest_folder)
         self.dest_button.grid(row=1, column=2, padx=10, pady=10)
 
-        # # Elementos da Aba Principal (Conversão Cellebrite)
-        # self.source_label = tk.Label(self.main_tab, text="Pasta de áudios e imagens:")
-        # self.source_label.grid(row=0, column=0, padx=10, pady=10, sticky='w')
-
-        # self.source_entry = tk.Entry(self.main_tab, width=50)
-        # self.source_entry.grid(row=0, column=1, padx=10, pady=10)
-
-        # self.source_button = tk.Button(self.main_tab, text="Selecionar", command=self.select_source_folder)
-        # self.source_button.grid(row=0, column=2, padx=10, pady=10)
-
-        # # Upload do arquivo Excel
-        # self.excel_label = tk.Label(self.main_tab, text="Arquivo Excel:")
-        # self.excel_label.grid(row=1, column=0, padx=10, pady=10, sticky='w')
-
-        # self.excel_entry = tk.Entry(self.main_tab, width=50)
-        # self.excel_entry.grid(row=1, column=1, padx=10, pady=10)
-
-        # self.excel_button = tk.Button(self.main_tab, text="Selecionar", command=self.select_excel_file)
-        # self.excel_button.grid(row=1, column=2, padx=10, pady=10)
-
-
         # Checkbox para conversa sem anexos
         self.checkbox_anexos = tk.BooleanVar()
         self.checkbox1 = tk.Checkbutton(self.main_tab, text="Conversa sem anexos.", variable=self.checkbox_anexos)
@@ -95,12 +74,8 @@ class App:
         # self.info_label = tk.Label(self.second_tab, text="Esta é a página de Consulta de Números Qlik.")
         # self.info_label.grid(row=0, column=0, padx=10, pady=10, sticky='w')
 
-    # def select_source_folder(self):
-    #     folder = filedialog.askdirectory()
-    #     if folder:
-    #         self.source_entry.delete(0, tk.END)
-    #         self.source_entry.insert(0, folder)
-
+    
+    # # Botão para selecionar o arquivo Excel
     def select_source_folder(self):
         folder = filedialog.askdirectory()
         if folder:
@@ -113,7 +88,7 @@ class App:
             self.dest_entry.delete(0, tk.END)
             self.dest_entry.insert(0, folder)
 
-    def localizar_subpasta_com_arquivo(file, pasta_usuario):
+    def localizar_subpasta_com_arquivo(self,file, pasta_usuario):
         """
         Localiza a subpasta onde qualquer arquivo listado no Excel está presente.
 
@@ -157,57 +132,19 @@ class App:
                     return os.path.join(root, file)  # Retorna o caminho completo
         return None  # Nenhum arquivo encontrado
 
-    # def select_excel_file(self):
-    #     file = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
-    #     if file:
-    #         self.excel_entry.delete(0, tk.END)
-    #         self.excel_entry.insert(0, file)
-
+ 
     def log_activity(self, message):
         self.log_text.config(state='normal')
         self.log_text.insert(tk.END, message + '\n')
         self.log_text.config(state='disabled')
         self.log_text.see(tk.END)
 
-    # def process(self):
-    #     source = self.source_entry.get()
-    #     dest = self.dest_entry.get()
-        
-    #     if not source:
-    #         messagebox.showerror("Erro", "O campo 'Pasta exportada com relatórios' não pode estar vazio.")
-    #         return
-        
-    #     if not dest:
-    #         messagebox.showerror("Erro", "O campo 'Pasta de Destino' não pode estar vazio.")
-    #         return
-        
-    #     option1 = self.checkbox_anexos.get()
-    #     option2 = self.checkbox_tag.get()
-        
-    #     # Exemplo de uso das funções adicionadas
-    #     excel_file = self.localizar_arquivo_excel(source)
-    #     if excel_file:
-    #         self.log_activity(f"Arquivo .xlsx encontrado em: {excel_file}")
-    #         subpasta = self.localizar_subpasta_com_arquivo(excel_file, source)
-    #         if subpasta:
-    #             self.log_activity(f"Anexos encontrados na subpasta: {subpasta}")
-    #         else:
-    #             self.log_activity("Nenhum arquivo listado no Excel foi encontrado nas subpastas.")
-    #     else:
-    #         self.log_activity("Nenhum arquivo Excel encontrado na pasta selecionada.")
-        
-    #     # Exemplo de saída no campo de monitoramento de atividades
-    #     self.log_activity(f"\nPasta exportada com relatórios: {source}")
-    #     self.log_activity(f"Pasta de Destino: {dest}")
-    #     #self.log_activity(f"Opção 1: {'Selecionado' if option1 else 'Não selecionado'}")
-    #     #self.log_activity(f"Opção 2: {'Selecionado' if option2 else 'Não selecionado'}")
-    #     self.log_activity("Processamento concluído!")
-
+    
     def process(self):
-        self.source = self.source_entry.get()
-        print(self.source)
-        excel_file = self.localizar_arquivo_excel(self.source)
-        audio_folder = self.localizar_subpasta_com_arquivo(excel_file, self.source)
+        source = self.source_entry.get()
+        print(source)
+        excel_file = self.localizar_arquivo_excel(source)
+        audio_folder = self.localizar_subpasta_com_arquivo(excel_file, source)
         is_folder = self.checkbox_anexos.get()
         is_tag = self.checkbox_tag.get()
 
@@ -251,7 +188,7 @@ class App:
     def update_progress(self, progress):
         self.progress_bar['value'] = progress
         self.root.update_idletasks()
-        self.log_activity(f"Progresso: {progress:.2f}%")
+        #self.log_activity(f"Progresso: {progress:.2f}%")
 
 if __name__ == "__main__":
     root = tk.Tk()
