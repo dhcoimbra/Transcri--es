@@ -169,8 +169,7 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
 
         # Atualiza a barra de progresso e define o timestamp
         linhas_processadas += 1
-        #progresso = linhas_processadas / total_linhas
-        #progress_bar.progress(progresso)
+       
         progress = (linhas_processadas / total_linhas) * 100
         progress_bar(progress)  # Atualiza a barra de progresso com o valor atual
 
@@ -179,8 +178,10 @@ def criar_documento_para_lote(df_lote, audio_dir, lote_num, progress_bar, linhas
 
     # Salva o arquivo do lote
     lote_file_path = f"lote_{lote_num}.docx"
-    doc.save(lote_file_path)
-    return lote_file_path
+    #doc.save(lote_file_path)
+    abs_file = os.path.join(os.path.abspath('files'), lote_file_path)
+    doc.save(abs_file)
+    return abs_file#lote_file_path
 
 def processar_em_lotes(file, audio_dir, progress_bar, filtro_tag):
     df = pd.read_excel(file, engine='openpyxl', header=1).dropna(how='all')
@@ -230,7 +231,7 @@ def capturar_frame(video_path, output_path, frame_number=10):
         print(f"Erro ao capturar o frame {frame_number} do vídeo {video_path}: {e}")
         return False
 
-def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_transcricoes_final.docx", frame_number=10):
+def recriar_documento_final(path_dest, documentos, audio_dir, doc_final_path="resultado_transcricoes_final.docx", frame_number=10):
     doc_final = Document()
 
     for idx, doc_path in enumerate(documentos):
@@ -343,10 +344,11 @@ def recriar_documento_final(documentos, audio_dir, doc_final_path="resultado_tra
                 doc_final.add_page_break()
 
     # Salva o documento final
-    doc_final.save(doc_final_path)
-    formatar_tabela_documento(doc_final_path)
+    path_relatorios_gerados = os.path.join(path_dest,doc_final_path)
+    doc_final.save(path_relatorios_gerados)
+    formatar_tabela_documento(path_relatorios_gerados)
 
-    return doc_final_path
+    return path_relatorios_gerados
 
 
 def formatar_tabela_documento(doc_path):

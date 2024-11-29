@@ -4,6 +4,7 @@ import os
 from utils_tk import verificar_arquivos_na_pasta, processar_em_lotes, recriar_documento_final, anonimizar_interlocutores
 from db import criar_tabela_transcricoes
 import pandas as pd
+import threading
 
 class App:
     def __init__(self, root):
@@ -61,7 +62,7 @@ class App:
         self.progress_bar.grid(row=6, column=0, columnspan=3, padx=10, pady=10)
 
         # Botão Processar
-        self.process_button = tk.Button(self.main_tab, text="Processar", command=self.process)
+        self.process_button = tk.Button(self.main_tab, text="Processar", command=self.start_thread_process)
         self.process_button.grid(row=4, column=1, pady=20)
 
         # Elementos da Aba Secundária
@@ -140,8 +141,13 @@ class App:
         self.log_text.see(tk.END)
 
     
+    def start_thread_process(self):
+        self.thread = threading.Thread(target=self.process)
+        self.thread.start()
+    
     def process(self):
         source = self.source_entry.get()
+        path_dest=self.dest_entry.get()
         print(source)
         excel_file = self.localizar_arquivo_excel(source)
         audio_folder = self.localizar_subpasta_com_arquivo(excel_file, source)
@@ -159,6 +165,8 @@ class App:
         self.log_activity("Iniciando transcrição...")
 
         # Criar a tabela de transcrições no PostgreSQL
+        os.makedirs('Relatórios Gerados', exist_ok=True)
+        os.makedirs('files', exist_ok=True)
         criar_tabela_transcricoes()
 
         # Processar o Excel e gerar os documentos de lote
@@ -171,19 +179,22 @@ class App:
         # Verificar se a pasta contém os arquivos referenciados no Excel
         if verificar_arquivos_na_pasta(excel_file, audio_folder):
             # Unir todos os documentos de lote em um único documento final
-            doc_final_path = recriar_documento_final(documentos_gerados, audio_folder)
+            
+            doc_final_path = recriar_documento_final(path_dest,documentos_gerados, audio_folder)
 
-            self.log_activity(f"Transcrição concluída. Documento final criado em: {doc_final_path}")
+            self.log_activity(f"Transcrição concluída. \nRelatório criado em: {doc_final_path}")
 
             # Opção para anonimizar interlocutores
             if messagebox.askyesno("Anonimizar", "Deseja gerar um documento anonimizado?"):
-                anonimizado_path = os.path.join(os.getcwd(), "Anonimizado.docx")
+                #anonimizado_path = os.path.join(os.getcwd(), "Anonimizado.docx")
+                anonimizado_path = os.path.join(path_dest, "Anonimizado.docx")
                 anonimizar_interlocutores(doc_final_path, anonimizado_path)
                 self.log_activity(f"Documento anonimizado criado em: {anonimizado_path}")
         else:
             self.log_activity("A pasta fornecida não contém os arquivos de mídia mencionados no arquivo Excel.")
 
         self.log_activity("Processamento concluído!")
+        any(os.remove(os.path.join('files', f)) for f in os.listdir('files') if os.path.isfile(os.path.join('files', f)))
 
     def update_progress(self, progress):
         self.progress_bar['value'] = progress
