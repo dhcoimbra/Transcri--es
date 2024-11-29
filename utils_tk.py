@@ -9,7 +9,7 @@ from docx.shared import RGBColor, Pt
 from assemblyai import upload_audio, transcrever_audio_assemblyai
 from PIL import UnidentifiedImageError, Image
 from db import salvar_transcricao, buscar_transcricao
-import streamlit as st
+#import streamlit as st
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import hashlib
 import re
@@ -469,7 +469,7 @@ def ajustar_largura_celula(cell, largura):
     
 
 def anonimizar_interlocutores(docx_path, output_path):
-    st.write("INICIOU ANONIMIZAÇÃO")
+    #st.write("INICIOU ANONIMIZAÇÃO")
     
     # Carregar o documento .docx
     doc = Document(docx_path)
@@ -511,12 +511,12 @@ def anonimizar_interlocutores(docx_path, output_path):
                             interlocutor_count += 1
     
     # Exibir o mapeamento detalhado dos interlocutores
-    st.write("Mapeamento dos Interlocutores:")
+    #st.write("Mapeamento dos Interlocutores:")
     for original, anonimo in interlocutor_map.items():
         details = interlocutor_details[original]
-        st.write(f"{anonimo} = {original}")
-        st.write(f"  {details['anon_name']}: {details['name']}")
-        st.write(f"  {details['anon_number']}: {details['number']}")
+        #st.write(f"{anonimo} = {original}")
+        #st.write(f"  {details['anon_name']}: {details['name']}")
+        #st.write(f"  {details['anon_number']}: {details['number']}")
     
     # Etapa 2: Substituição dos identificadores no documento
     for table in doc.tables:
@@ -554,4 +554,4 @@ def anonimizar_interlocutores(docx_path, output_path):
     
     # Salvar o documento modificado
     doc.save(output_path)
-    st.write("Anonimização concluída. Documento salvo em:", output_path)
+    #st.write("Anonimização concluída. Documento salvo em:", output_path)
