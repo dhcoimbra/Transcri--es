@@ -18,7 +18,7 @@ class App:
         self.second_tab = ttk.Frame(self.tab_control)
 
         self.tab_control.add(self.main_tab, text='Principal')
-        self.tab_control.add(self.second_tab, text='Configurações')
+        #self.tab_control.add(self.second_tab, text='Configurações')
 
         self.tab_control.pack(expand=1, fill='both')
 
@@ -67,9 +67,9 @@ class App:
 
         # Elementos da Aba Secundária
         # Checkbox na aba secundária
-        self.checkbox_anonimizar = tk.BooleanVar()
-        self.checkbox3 = tk.Checkbutton(self.second_tab, text="Anonimizar documento.", variable=self.checkbox_anonimizar)
-        self.checkbox3.grid(row=0, column=0, padx=10, pady=10, sticky='w')
+        #self.checkbox_anonimizar = tk.BooleanVar()
+        #self.checkbox3 = tk.Checkbutton(self.second_tab, text="Anonimizar documento.", variable=self.checkbox_anonimizar)
+        #self.checkbox3.grid(row=0, column=0, padx=10, pady=10, sticky='w')
 
         # # Elementos da Aba Secundária (Consulta números)
         # self.info_label = tk.Label(self.second_tab, text="Esta é a página de Consulta de Números Qlik.")
@@ -165,7 +165,7 @@ class App:
         self.log_activity("Iniciando transcrição...")
 
         # Criar a tabela de transcrições no PostgreSQL
-        os.makedirs('Relatórios Gerados', exist_ok=True)
+        #os.makedirs('Relatórios Gerados', exist_ok=True)
         os.makedirs('files', exist_ok=True)
         criar_tabela_transcricoes()
 
